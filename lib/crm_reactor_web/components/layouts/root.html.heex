@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <title>CRM Assistant</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #1a1a1a; }
+      .chat-wrap { max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    </style>
+  </head>
+  <body>
+    <%= @inner_content %>
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

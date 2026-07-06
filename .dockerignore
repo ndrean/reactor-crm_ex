@@ -1,0 +1,10 @@
+.git
+_build
+deps
+.elixir_ls
+.env
+*.ez
+node_modules
+test
+infra
+.github

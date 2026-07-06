@@ -1,0 +1,21 @@
+{
+  "skip_files": [
+    "lib/crm_reactor/release.ex",
+    "lib/crm_reactor/repo.ex",
+    "lib/crm_reactor/vault.ex",
+    "lib/crm_reactor/mailer.ex",
+    "lib/crm_reactor/encrypted.ex",
+    "lib/crm_reactor_web/endpoint.ex",
+    "lib/crm_reactor_web/gettext.ex",
+    "lib/crm_reactor_web/components/",
+    "lib/crm_reactor/telegram.ex",
+    "lib/crm_reactor/telegram/handler.ex",
+    "lib/crm_reactor_web/controllers/webhook_controller.ex",
+    "lib/crm_reactor/ai/whisper.ex",
+    "lib/crm_reactor/ai/classifier.ex",
+    "lib/crm_reactor/ai/classifier_behaviour.ex",
+    "lib/crm_reactor_web.ex",
+    "lib/crm_reactor/prom_ex.ex",
+    "lib/crm_reactor/prom_ex/"
+  ]
+}
