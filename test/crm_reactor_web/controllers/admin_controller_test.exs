@@ -151,4 +151,77 @@ defmodule CrmReactorWeb.AdminControllerTest do
     |> delete("/api/admin/contacts/#{fixture.tenant.schema_name}/999999999")
     |> json_response(404)
   end
+
+  describe "PUT /api/admin/subscriptions" do
+    test "disables a workflow for a tenant", %{conn: conn} do
+      tid = "sub_ctrl_test_#{System.unique_integer([:positive])}"
+
+      on_exit(fn ->
+        CrmReactor.Repo.query!(
+          "DELETE FROM global_registry.tenant_workflow_overrides WHERE tenant_id = '#{tid}'"
+        )
+      end)
+
+      resp =
+        conn
+        |> put("/api/admin/subscriptions", %{
+          tenant_id: tid,
+          workflow_name: "contacts",
+          enabled: false
+        })
+        |> json_response(200)
+
+      assert resp["success"] == true
+      assert resp["tenant_id"] == tid
+      assert resp["workflow_name"] == "contacts"
+      assert resp["enabled"] == false
+      assert CrmReactor.AI.SubscriptionCache.enabled?(tid, "contacts") == false
+    end
+
+    test "re-enables a workflow for a tenant", %{conn: conn} do
+      tid = "sub_ctrl_test_#{System.unique_integer([:positive])}"
+
+      on_exit(fn ->
+        CrmReactor.Repo.query!(
+          "DELETE FROM global_registry.tenant_workflow_overrides WHERE tenant_id = '#{tid}'"
+        )
+      end)
+
+      conn
+      |> put("/api/admin/subscriptions", %{tenant_id: tid, workflow_name: "todos", enabled: false})
+      |> json_response(200)
+
+      resp =
+        conn
+        |> put("/api/admin/subscriptions", %{
+          tenant_id: tid,
+          workflow_name: "todos",
+          enabled: true
+        })
+        |> json_response(200)
+
+      assert resp["enabled"] == true
+      assert CrmReactor.AI.SubscriptionCache.enabled?(tid, "todos") == true
+    end
+
+    test "returns 400 when params are missing", %{conn: conn} do
+      resp =
+        conn
+        |> put("/api/admin/subscriptions", %{tenant_id: "x"})
+        |> json_response(400)
+
+      assert resp["error"] =~ "required"
+    end
+
+    test "returns 401 without auth token" do
+      build_conn()
+      |> put_req_header("content-type", "application/json")
+      |> put("/api/admin/subscriptions", %{
+        tenant_id: "x",
+        workflow_name: "contacts",
+        enabled: false
+      })
+      |> json_response(401)
+    end
+  end
 end

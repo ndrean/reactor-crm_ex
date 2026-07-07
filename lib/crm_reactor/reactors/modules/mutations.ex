@@ -15,14 +15,21 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
     "help" => Modules.Help
   }
 
-  def confirm(pending_id, decision) do
+  # System callers (PendingTimeoutWorker) omit user_id — auth is bypassed.
+  def confirm(pending_id, decision, user_id \\ nil) do
     with log when not is_nil(log) <- find_pending_log(pending_id),
+         :ok <- authorize(log.triggered_by, user_id),
          schema <- log.schema do
       dispatch_confirm(log, schema, decision)
     else
       nil -> {:error, :pending_not_found}
+      {:error, :unauthorized} = err -> err
     end
   end
+
+  defp authorize(_triggered_by, nil), do: :ok
+  defp authorize(triggered_by, user_id) when triggered_by == user_id, do: :ok
+  defp authorize(_triggered_by, _user_id), do: {:error, :unauthorized}
 
   # Fan-out confirmation: execute N queued operations.
   defp dispatch_confirm(%{proposed_params: %{"type" => "fanout"}} = log, schema, "confirm"),

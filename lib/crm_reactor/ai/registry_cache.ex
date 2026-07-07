@@ -7,6 +7,7 @@ defmodule CrmReactor.AI.RegistryCache do
   """
   use GenServer
 
+  alias CrmReactor.AI.SubscriptionCache
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.ModuleRegistry
 
@@ -24,6 +25,11 @@ defmodule CrmReactor.AI.RegistryCache do
       [{:entries, entries}] -> entries
       [] -> []
     end
+  end
+
+  @doc "Returns registry entries enabled for the given tenant. Unknown tenants get all entries."
+  def for_tenant(tenant_id) do
+    Enum.filter(all(), &SubscriptionCache.enabled?(tenant_id, &1.workflow_name))
   end
 
   @doc "Reloads entries from the database asynchronously (cast — does not block caller)."

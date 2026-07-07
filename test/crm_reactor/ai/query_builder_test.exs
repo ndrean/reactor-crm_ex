@@ -168,6 +168,19 @@ defmodule CrmReactor.AI.QueryBuilderTest do
     assert {:error, {:rejected_filters, _}} = QueryBuilder.build_query(Todo, "op invalide")
   end
 
+  test "filter with non-string field key is rejected" do
+    Application.put_env(:crm_reactor, :nl2sql_adapter, fn _p, _t ->
+      {:ok,
+       %{
+         "filters" => [%{"field" => 123, "op" => "=", "value" => "x"}],
+         "sort_by" => nil,
+         "sort_dir" => "asc"
+       }}
+    end)
+
+    assert {:error, {:rejected_filters, _}} = QueryBuilder.build_query(Todo, "champ numérique")
+  end
+
   test "non-list filters returns invalid_format error" do
     Application.put_env(:crm_reactor, :nl2sql_adapter, fn _p, _t ->
       {:ok, %{"filters" => "not a list", "sort_by" => nil, "sort_dir" => "asc"}}

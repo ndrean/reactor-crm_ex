@@ -70,12 +70,9 @@ defmodule CrmReactor.Reactors.Modules.Contacts do
   end
 
   def execute(%{action: "create"} = ctx) do
-    atom_params =
-      ctx.params
-      |> normalize_create_params()
-      |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)
+    params = normalize_create_params(ctx.params)
 
-    case check_phone_duplicate(atom_params[:phone], ctx.tenant_schema) do
+    case check_phone_duplicate(params["phone"], ctx.tenant_schema) do
       {:duplicate, existing} ->
         {:ok,
          %{
@@ -85,7 +82,7 @@ defmodule CrmReactor.Reactors.Modules.Contacts do
          }}
 
       :no_duplicate ->
-        insert_contact(atom_params, ctx.tenant_schema)
+        insert_contact(params, ctx.tenant_schema)
     end
   end
 

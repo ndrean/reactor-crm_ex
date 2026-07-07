@@ -377,6 +377,23 @@ defmodule CrmReactor.Reactors.Modules.TodosTest do
       assert result.output =~ "Appeler Marie"
       refute result.output =~ "Préparer devis"
     end
+
+    test "invalid date string is ignored — falls back to default filter", %{
+      schema: schema,
+      user_1: user
+    } do
+      {:ok, result} =
+        Todos.execute(%{
+          action: "list",
+          params: %{"due_on" => "not-a-date"},
+          tenant_schema: schema,
+          user_id: user
+        })
+
+      # Behaves as if no date filter was given
+      assert result.action == "list"
+      assert result.output =~ "Appeler Marie"
+    end
   end
 
   # ── User isolation ────────────────────────────────────────────────────
@@ -492,6 +509,44 @@ defmodule CrmReactor.Reactors.Modules.TodosTest do
         Todos.execute(%{
           action: "complete",
           params: %{"subject" => "Tâche inexistante"},
+          tenant_schema: schema,
+          user_id: user
+        })
+
+      assert result.output =~ "Aucune tâche trouvée"
+    end
+
+    test "contact_name resolves to id: todo found via contact_id even without name in subject", %{
+      schema: schema,
+      user_1: user,
+      marie: marie
+    } do
+      # Todo with a generic subject — no "Marie" text, but linked to Marie by contact_id
+      Repo.query!(
+        "INSERT INTO #{schema}.todos (subject, due_date, created_by, contact_id) VALUES ($1, $2, $3, $4)",
+        ["Réunion importante", Date.add(Date.utc_today(), 1), user, marie.id]
+      )
+
+      {:ok, result} =
+        Todos.execute(%{
+          action: "complete",
+          params: %{"subject" => "Réunion importante", "contact_name" => "Marie Dupont"},
+          tenant_schema: schema,
+          user_id: user
+        })
+
+      assert result.action == "complete"
+      assert result.output =~ "complétée"
+    end
+
+    test "contact_name not in DB falls back to subject ilike match", %{
+      schema: schema,
+      user_1: user
+    } do
+      {:ok, result} =
+        Todos.execute(%{
+          action: "complete",
+          params: %{"subject" => "Inconnu", "contact_name" => "Inconnu Inexistant"},
           tenant_schema: schema,
           user_id: user
         })

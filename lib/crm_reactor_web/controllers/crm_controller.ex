@@ -21,22 +21,32 @@ defmodule CrmReactorWeb.CrmController do
       {:error, %{errors: [%{error: :unknown_user} | _]}} ->
         conn |> put_status(403) |> json(%{error: "Unknown user"})
 
+      # coveralls-ignore-next-line
       {:error, reason} ->
         conn |> put_status(500) |> json(%{error: inspect(reason)})
     end
   end
 
-  def confirm(conn, %{"pending_id" => pending_id, "decision" => decision}) do
-    case Mutations.confirm(pending_id, decision) do
+  def confirm(conn, %{"pending_id" => pending_id, "decision" => decision} = params) do
+    user_id = params["user_id"]
+
+    case Mutations.confirm(pending_id, decision, user_id) do
       {:ok, result} ->
         json(conn, format_result(result))
 
       {:error, :pending_not_found} ->
         conn |> put_status(404) |> json(%{error: "Pending action not found"})
 
+      {:error, :unauthorized} ->
+        conn |> put_status(403) |> json(%{error: "Unauthorized"})
+
       {:error, :invalid_email} ->
         conn |> put_status(400) |> json(%{error: "Invalid email address"})
 
+      {:error, :invalid_decision} ->
+        conn |> put_status(400) |> json(%{error: "Invalid decision"})
+
+      # coveralls-ignore-next-line
       {:error, reason} ->
         conn |> put_status(500) |> json(%{error: inspect(reason)})
     end
@@ -52,6 +62,4 @@ defmodule CrmReactorWeb.CrmController do
 
     if pending_id = result[:pending_id], do: Map.put(base, :pending_id, pending_id), else: base
   end
-
-  defp format_result(result) when is_map(result), do: result
 end

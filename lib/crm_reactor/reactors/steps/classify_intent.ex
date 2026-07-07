@@ -8,10 +8,10 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
   require Logger
 
   @impl true
-  def run(%{text: text, attachment: attachment}, _context, _options) do
+  def run(%{text: text, attachment: attachment, tenant: tenant}, _context, _options) do
     case InputGuard.validate(text) do
       :ok ->
-        registry = RegistryCache.all()
+        registry = RegistryCache.for_tenant(tenant.tenant_id)
         classify(text, attachment, registry)
 
       {:rejected, message} ->

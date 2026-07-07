@@ -2,6 +2,7 @@ defmodule CrmReactor.Reactors.Steps.DispatchModule do
   @moduledoc "Reactor step: route classified steps to the appropriate modules and combine results."
   use Reactor.Step
 
+  alias CrmReactor.AI.SubscriptionCache
   alias CrmReactor.CRM.ExecutionLog
   alias CrmReactor.Reactors.Modules
   alias CrmReactor.Reactors.WorkflowInterpreter
@@ -31,34 +32,53 @@ defmodule CrmReactor.Reactors.Steps.DispatchModule do
         _context,
         _options
       ) do
+    tenant_id = Map.get(tenant, :tenant_id)
+
+    disabled =
+      steps
+      |> Enum.map(& &1.workflow)
+      |> Enum.uniq()
+      |> Enum.reject(&SubscriptionCache.enabled?(tenant_id, &1))
+
     destructive_count = Enum.count(steps, &(&1.action in @destructive_actions))
 
-    if length(steps) > 1 and destructive_count > 1 do
-      {:ok,
-       %{
-         output:
-           "Je ne peux pas gérer plusieurs modifications ou suppressions à la fois. " <>
-             "Envoyez ces demandes séparément.",
-         action: "clarify"
-       }}
-    else
-      context = %{
-        tenant_schema: tenant.schema_name,
-        company_name: tenant.company_name,
-        admin_email: tenant[:admin_email],
-        channel: channel,
-        user_id: user_id,
-        log_id: log.id,
-        raw_text: raw_text
-      }
+    cond do
+      disabled != [] ->
+        names = Enum.join(disabled, ", ")
 
-      case WorkflowInterpreter.run(steps, @module_map, context) do
-        {:ok, %{action: "clarify", confirm_items: items, confirm_step: step_template} = result} ->
-          store_fanout_pending(items, step_template, result.output, log.id, context)
+        {:ok,
+         %{
+           output: "Cette fonctionnalité (#{names}) n'est pas disponible sur votre abonnement.",
+           action: "unauthorized"
+         }}
 
-        other ->
-          other
-      end
+      length(steps) > 1 and destructive_count > 1 ->
+        {:ok,
+         %{
+           output:
+             "Je ne peux pas gérer plusieurs modifications ou suppressions à la fois. " <>
+               "Envoyez ces demandes séparément.",
+           action: "clarify"
+         }}
+
+      true ->
+        context = %{
+          tenant_schema: tenant.schema_name,
+          company_name: tenant.company_name,
+          admin_email: tenant[:admin_email],
+          channel: channel,
+          user_id: user_id,
+          log_id: log.id,
+          raw_text: raw_text
+        }
+
+        case WorkflowInterpreter.run(steps, @module_map, context) do
+          {:ok, %{action: "clarify", confirm_items: items, confirm_step: step_template} = result} ->
+            store_fanout_pending(items, step_template, result.output, log.id, context)
+
+          other ->
+            other
+        end
     end
   end
 

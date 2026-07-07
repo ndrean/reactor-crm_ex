@@ -66,7 +66,7 @@ defmodule CrmReactor.AI.QueryBuilder do
             {:ok, query}
 
           {:error, _} = err ->
-            n = if is_list(filters), do: length(filters), else: 0
+            n = filter_count(filters)
 
             Telemetry.nl2sql_stop(start_time, %{
               filter_count: n,
@@ -149,7 +149,11 @@ defmodule CrmReactor.AI.QueryBuilder do
          ) do
       {:ok, %{status: 200, body: body}} ->
         [choice | _] = body["choices"]
-        {:ok, Jason.decode!(choice["message"]["content"])}
+
+        case Jason.decode(choice["message"]["content"]) do
+          {:ok, parsed} -> {:ok, parsed}
+          {:error, _} -> {:error, "invalid JSON from Mistral LLM"}
+        end
 
       {:ok, %{status: status}} ->
         {:error, "Mistral error #{status}"}
@@ -178,7 +182,10 @@ defmodule CrmReactor.AI.QueryBuilder do
            receive_timeout: 30_000
          ) do
       {:ok, %{status: 200, body: body}} ->
-        {:ok, Jason.decode!(body["message"]["content"])}
+        case Jason.decode(body["message"]["content"]) do
+          {:ok, parsed} -> {:ok, parsed}
+          {:error, _} -> {:error, "invalid JSON from Ollama LLM"}
+        end
 
       {:ok, %{status: status}} ->
         {:error, "Ollama error #{status}"}
@@ -287,4 +294,7 @@ defmodule CrmReactor.AI.QueryBuilder do
   end
 
   defp cast_value(_, value), do: value
+
+  defp filter_count(filters) when is_list(filters), do: length(filters)
+  defp filter_count(_), do: 0
 end

@@ -11,6 +11,7 @@ defmodule CrmReactor.Application do
       CrmReactor.Repo,
       CrmReactor.Vault,
       CrmReactor.AI.RegistryCache,
+      CrmReactor.AI.SubscriptionCache,
       {DNSCluster, query: Application.get_env(:crm_reactor, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: CrmReactor.PubSub},
       {Oban, Application.fetch_env!(:crm_reactor, Oban)},

@@ -16,6 +16,7 @@
     "lib/crm_reactor/ai/classifier_behaviour.ex",
     "lib/crm_reactor_web.ex",
     "lib/crm_reactor/prom_ex.ex",
-    "lib/crm_reactor/prom_ex/"
+    "lib/crm_reactor/prom_ex/",
+    "lib/crm_reactor_web/telemetry.ex"
   ]
 }

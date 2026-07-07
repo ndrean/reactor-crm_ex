@@ -1,6 +1,7 @@
 defmodule CrmReactorWeb.AdminController do
   use CrmReactorWeb, :controller
 
+  alias CrmReactor.AI.SubscriptionCache
   alias CrmReactor.GDPR.DataSubject
   alias CrmReactor.Tenants.Provisioner
 
@@ -35,6 +36,23 @@ defmodule CrmReactorWeb.AdminController do
       {:error, :not_found} ->
         conn |> put_status(404) |> json(%{error: "Tenant not found"})
     end
+  end
+
+  def set_subscription(conn, %{"tenant_id" => tid, "workflow_name" => wf, "enabled" => enabled})
+      when is_boolean(enabled) do
+    case SubscriptionCache.set(tid, wf, enabled) do
+      :ok ->
+        json(conn, %{success: true, tenant_id: tid, workflow_name: wf, enabled: enabled})
+
+      {:error, reason} ->
+        conn |> put_status(422) |> json(%{error: inspect(reason)})
+    end
+  end
+
+  def set_subscription(conn, _params) do
+    conn
+    |> put_status(400)
+    |> json(%{error: "tenant_id, workflow_name, and enabled (bool) required"})
   end
 
   def export_subject(conn, %{"identifier" => identifier}) do

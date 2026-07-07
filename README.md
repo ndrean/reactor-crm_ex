@@ -66,6 +66,7 @@ flowchart TB
         input_job_id -->|job_id|step_log
         step_log["log(LogExecution)"]
         step_text -->|text|step_classify
+        step_tenant -->|tenant|step_classify
         step_classify["classification(ClassifyIntent)"]
         step_classify -->|classification|step_result
         step_tenant -->|tenant|step_result
@@ -137,6 +138,7 @@ graph TB
     subgraph global_registry
         T[tenants] --- UM[user_mappings]
         T --- MR[module_registry]
+        T --- TWO[tenant_workflow_overrides]
     end
     subgraph customer_acme
         C1[contacts] --- E1[execution_logs]
@@ -151,9 +153,38 @@ graph TB
     T -->|schema_name| customer_bigcorp
 ```
 
-Each tenant gets an isolated Postgres schema (`customer_<tenant_id>`) with its own `contacts`, `todos`, and `execution_logs` tables. The `global_registry` schema holds shared data: `tenants`, `user_mappings`, `module_registry`.
+Each tenant gets an isolated Postgres schema (`customer_<tenant_id>`) with its own `contacts`, `todos`, and `execution_logs` tables. The `global_registry` schema holds shared data: `tenants`, `user_mappings`, `module_registry`, and `tenant_workflow_overrides`.
 
 `tenants` stores an optional `admin_email` for business-data export notifications. `user_mappings` stores an optional `user_email` for GDPR personal-data export delivery.
+
+### Per-tenant workflow access control
+
+By default every workflow is available to every tenant. `tenant_workflow_overrides` gates access at the `workflow_name` level (`"contacts"`, `"todos"`, `"data"`).
+
+**How gating works (two layers):**
+
+1. **Prompt layer** — `ClassifyIntent` calls `RegistryCache.for_tenant(tenant_id)` instead of `RegistryCache.all()`. Disabled workflows are invisible to the LLM — it cannot propose an action it has never seen.
+2. **Dispatch layer** — `DispatchModule` checks `SubscriptionCache` before routing. Any step whose workflow is disabled returns `action: "unauthorized"` regardless of what the LLM said.
+
+The `SubscriptionCache` GenServer loads all overrides from `global_registry.tenant_workflow_overrides` at boot into an ETS table (direct reads, no GenServer roundtrip). Updates via the admin API write to both Postgres and ETS atomically — effective immediately across all active connections, no reconnect needed.
+
+**Manage via the admin API:**
+
+```bash
+# Disable a workflow for a tenant
+curl -X PUT http://localhost:4000/api/admin/subscriptions \
+  -H "Authorization: bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"acme","workflow_name":"data","enabled":false}'
+
+# Re-enable
+curl -X PUT http://localhost:4000/api/admin/subscriptions \
+  -H "Authorization: bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"acme","workflow_name":"data","enabled":true}'
+```
+
+The endpoint is the natural hook for a Stripe entitlement webhook: receive the event, call `PUT /api/admin/subscriptions` with the relevant `tenant_id` and `workflow_name`.
 
 ### 2-step mutation confirmation
 
@@ -324,7 +355,7 @@ mix dialyzer          # first run builds PLT (~2 min)
 | Mistral Small returns `workflow: "none"` | Escalates to Mistral Large. If Large also fails, falls back to Ollama. |
 | Mistral API down / 5xx / timeout | Auto-fallback to Ollama (host GPU). Logged as warning. |
 | Ollama also down | Reactor step returns `{:error, ...}`. HTTP gets 500. Telegram user gets no reply. Oban retries up to 3 times. |
-| Mistral returns unparseable JSON | `Jason.decode!` raises, caught by Reactor, returns error. |
+| Mistral returns unparseable JSON | `Jason.decode/1` returns `{:error, ...}`, propagated as step error. No exception raised. |
 | NL2SQL filter validation fails | Falls back to deterministic query with warning log. User still gets a result. |
 | NL2SQL returns unknown column | Column silently skipped (logged as warning), query runs without that filter. |
 
@@ -345,6 +376,8 @@ mix dialyzer          # first run builds PLT (~2 min)
 | Deactivated tenant | 403 `{"error": "Unknown user"}` | No reply |
 | Pending mutation not found | 404 `{"error": "Pending action not found"}` | "Action expiree ou introuvable." |
 | Invalid admin token | 401 `{"error": "Unauthorized"}` | N/A |
+| Workflow not in tenant's subscription | 200 `{"action": "unauthorized", "output": "..."}` | Reply in chat |
+| Invalid confirm decision | 400 `{"error": "Invalid decision"}` | N/A |
 | Internal error | 500 `{"error": "..."}` | No reply (Oban may retry) |
 
 ## Telegram setup
@@ -436,6 +469,8 @@ lib/
       input_guard.ex         # Prompt injection detection
       prompts.ex             # Schema-driven prompt builder
       query_builder.ex       # NL2SQL: structured filters -> Ecto queries
+      registry_cache.ex      # ETS cache for global module registry
+      subscription_cache.ex  # ETS cache for per-tenant workflow overrides
       telemetry.ex           # AI-specific telemetry events
       whisper.ex             # Voice transcription via Whisper API
     emails/
@@ -457,10 +492,11 @@ lib/
         data_export.ex       # Usage/cost report (email delivery when admin_email set)
         mutations.ex         # 2-step confirm/reject
     tenants/
-      provisioner.ex         # Schema creation, teardown
-      tenant.ex              # Global registry schema
-      user_mapping.ex        # User -> tenant mapping
-      module_registry.ex     # Available workflow modules
+      provisioner.ex              # Schema creation, teardown
+      tenant.ex                   # Global registry schema
+      user_mapping.ex             # User -> tenant mapping
+      module_registry.ex          # Available workflow modules
+      tenant_workflow_override.ex # Per-tenant workflow access overrides
     telegram.ex              # Send messages + inline keyboards
     telegram/handler.ex      # Telegex webhook handler
     workers/
@@ -476,7 +512,7 @@ lib/
     router.ex                # API routes + /metrics
     controllers/
       crm_controller.ex      # POST /api/crm, /api/crm/confirm
-      admin_controller.ex    # POST /api/admin/provision, /toggle
+      admin_controller.ex    # POST /api/admin/provision, /toggle; PUT /api/admin/subscriptions
       webhook_controller.ex  # POST /webhook/telegram
       health_controller.ex   # GET /api/health
       metrics_controller.ex  # GET /metrics
@@ -558,6 +594,9 @@ Add an Ecto migration that creates the new tables inside each tenant schema (usi
 | One line in `@module_map` | `dispatch_module.ex` | Yes |
 | DB rows in `module_registry` | SQL / migration | Yes |
 | Schema migration for new tables | `priv/repo/migrations/` | If new tables needed |
+| Gate per tenant via `PUT /api/admin/subscriptions` | Admin API | If subscription-gated |
+
+New workflows are enabled for all tenants by default. No `tenant_workflow_overrides` row is needed unless you want to restrict access.
 
 ## GDPR and ISO 42001 compliance
 
@@ -628,6 +667,6 @@ Add an Ecto migration that creates the new tables inside each tenant schema (usi
 | Memory | ~1.8 GB | ~1.0 GB |
 | Workflow engine | n8n visual workflows | Reactor (parallel step DAG) |
 | Job queue | Redis | Oban (Postgres-backed) |
-| Tests | Bash curl script (22 tests) | ExUnit (81 tests: 56 mocked + 25 external) |
+| Tests | Bash curl script (22 tests) | ExUnit (257+ tests: mocked + 26 external) |
 | Observability | Prometheus + custom Grafana | PromEx (auto-generated dashboards) |
 | Fault tolerance | Docker restart | OTP supervision + Oban retries |

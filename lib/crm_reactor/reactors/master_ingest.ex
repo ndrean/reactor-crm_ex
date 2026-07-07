@@ -35,7 +35,7 @@ defmodule CrmReactor.Reactors.MasterIngest do
   step :classification, CrmReactor.Reactors.Steps.ClassifyIntent do
     argument(:text, result(:text))
     argument(:attachment, input(:attachment))
-    wait_for(:tenant)
+    argument(:tenant, result(:tenant))
   end
 
   step :result, CrmReactor.Reactors.Steps.DispatchModule do

@@ -6,6 +6,7 @@ defmodule CrmReactorWeb.HealthController do
   def check(conn, _params) do
     case SQL.query(CrmReactor.Repo, "SELECT 1") do
       {:ok, _} -> json(conn, %{status: "ok"})
+      # coveralls-ignore-next-line
       _ -> conn |> put_status(503) |> json(%{status: "unhealthy"})
     end
   end

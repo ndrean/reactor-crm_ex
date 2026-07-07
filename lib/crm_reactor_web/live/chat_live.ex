@@ -69,7 +69,7 @@ defmodule CrmReactorWeb.ChatLive do
   def handle_event("confirm", _params, socket) do
     %{id: pending_id} = socket.assigns.pending
 
-    case Mutations.confirm(pending_id, "confirm") do
+    case Mutations.confirm(pending_id, "confirm", socket.assigns.user_id) do
       {:ok, result} ->
         msg = %{id: Ecto.UUID.generate(), role: :assistant, content: result.output}
         {:noreply, socket |> stream_insert(:messages, msg) |> assign(:pending, nil)}
@@ -83,7 +83,7 @@ defmodule CrmReactorWeb.ChatLive do
   def handle_event("reject", _params, socket) do
     %{id: pending_id} = socket.assigns.pending
 
-    case Mutations.confirm(pending_id, "reject") do
+    case Mutations.confirm(pending_id, "reject", socket.assigns.user_id) do
       {:ok, result} ->
         msg = %{id: Ecto.UUID.generate(), role: :assistant, content: result.output}
         {:noreply, socket |> stream_insert(:messages, msg) |> assign(:pending, nil)}
@@ -97,7 +97,7 @@ defmodule CrmReactorWeb.ChatLive do
   def handle_event("provide_email", %{"email" => email}, socket) when email != "" do
     %{id: pending_id} = socket.assigns.pending
 
-    case Mutations.confirm(pending_id, email) do
+    case Mutations.confirm(pending_id, email, socket.assigns.user_id) do
       {:ok, result} ->
         msg = %{id: Ecto.UUID.generate(), role: :assistant, content: result.output}
 

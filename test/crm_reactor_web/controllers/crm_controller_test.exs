@@ -64,6 +64,25 @@ defmodule CrmReactorWeb.CrmControllerTest do
     |> json_response(404)
   end
 
+  test "POST /api/crm/confirm - invalid decision returns 400", %{conn: conn, user_id: user_id} do
+    resp =
+      conn
+      |> post("/api/crm", %{user_id: user_id, text: "supprime Marie Dupont"})
+      |> json_response(200)
+
+    assert resp["pending_id"]
+
+    confirm_resp =
+      conn
+      |> post("/api/crm/confirm", %{
+        pending_id: resp["pending_id"],
+        decision: "gibberish"
+      })
+      |> json_response(400)
+
+    assert confirm_resp["error"] =~ "decision"
+  end
+
   test "POST /api/crm/confirm - invalid email returns 400", %{conn: conn, user_id: user_id} do
     # Trigger export email pending
     resp =

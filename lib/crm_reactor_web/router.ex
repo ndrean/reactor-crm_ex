@@ -30,6 +30,7 @@ defmodule CrmReactorWeb.Router do
     get "/health", HealthController, :check
     post "/admin/provision", AdminController, :provision
     post "/admin/toggle", AdminController, :toggle
+    put "/admin/subscriptions", AdminController, :set_subscription
     get "/admin/subjects/:identifier/export", AdminController, :export_subject
     post "/admin/subjects/:identifier/email-export", AdminController, :email_subject
     delete "/admin/subjects/:identifier", AdminController, :erase_subject
