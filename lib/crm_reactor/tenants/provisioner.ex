@@ -3,7 +3,7 @@ defmodule CrmReactor.Tenants.Provisioner do
   import Ecto.Query
 
   alias CrmReactor.Repo
-  alias CrmReactor.Tenants.{Tenant, UserMapping}
+  alias CrmReactor.Tenants.{Tenant, TenantCache, UserMapping}
 
   def provision(tenant_id, company_name, user_identifier \\ nil, opts \\ []) do
     schema_name = "customer_#{tenant_id}"
@@ -34,6 +34,10 @@ defmodule CrmReactor.Tenants.Provisioner do
 
       tenant
     end)
+    |> tap(fn
+      {:ok, _} -> TenantCache.reload()
+      _ -> :ok
+    end)
   end
 
   def drop_tenant(%Tenant{tenant_id: tid, schema_name: schema_name}) do
@@ -42,12 +46,47 @@ defmodule CrmReactor.Tenants.Provisioner do
       Repo.delete_all(from m in UserMapping, where: m.tenant_id == ^tid)
       Repo.delete_all(from t in Tenant, where: t.tenant_id == ^tid)
     end)
+    |> tap(fn
+      {:ok, _} -> TenantCache.reload()
+      _ -> :ok
+    end)
+  end
+
+  def set_webhook(tenant_id, url) do
+    case Repo.get_by(Tenant, tenant_id: tenant_id) do
+      nil ->
+        {:error, :not_found}
+
+      tenant ->
+        secret = tenant.webhook_secret || generate_webhook_secret()
+
+        tenant
+        |> Ecto.Changeset.change(webhook_url: url, webhook_secret: secret)
+        |> Repo.update()
+        |> tap(fn
+          {:ok, _} -> TenantCache.reload()
+          _ -> :ok
+        end)
+    end
+  end
+
+  defp generate_webhook_secret do
+    :crypto.strong_rand_bytes(32) |> Base.encode16(case: :lower)
   end
 
   def toggle_active(tenant_id, active?) do
     case Repo.get_by(Tenant, tenant_id: tenant_id) do
-      nil -> {:error, :not_found}
-      tenant -> tenant |> Ecto.Changeset.change(is_active: active?) |> Repo.update()
+      nil ->
+        {:error, :not_found}
+
+      tenant ->
+        tenant
+        |> Ecto.Changeset.change(is_active: active?)
+        |> Repo.update()
+        |> tap(fn
+          {:ok, _} -> TenantCache.reload()
+          _ -> :ok
+        end)
     end
   end
 

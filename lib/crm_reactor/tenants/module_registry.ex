@@ -9,6 +9,7 @@ defmodule CrmReactor.Tenants.ModuleRegistry do
     field :workflow_id, :string
     field :params_schema, :map
     field :prompt_hint, :string
+    field :hint_embedding, {:array, :float}
     field :active, :boolean, default: true
   end
 end

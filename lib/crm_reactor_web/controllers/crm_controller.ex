@@ -27,9 +27,8 @@ defmodule CrmReactorWeb.CrmController do
     end
   end
 
-  def confirm(conn, %{"pending_id" => pending_id, "decision" => decision} = params) do
-    user_id = params["user_id"]
-
+  def confirm(conn, %{"pending_id" => pending_id, "decision" => decision, "user_id" => user_id})
+      when is_binary(user_id) do
     case Mutations.confirm(pending_id, decision, user_id) do
       {:ok, result} ->
         json(conn, format_result(result))
@@ -50,6 +49,10 @@ defmodule CrmReactorWeb.CrmController do
       {:error, reason} ->
         conn |> put_status(500) |> json(%{error: inspect(reason)})
     end
+  end
+
+  def confirm(conn, _params) do
+    conn |> put_status(400) |> json(%{error: "pending_id, decision, and user_id required"})
   end
 
   defp format_result(%{output: output, action: action} = result) do

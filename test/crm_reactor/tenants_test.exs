@@ -21,10 +21,7 @@ defmodule CrmReactor.TenantsTest do
   end
 
   test "inactive tenant returns {:error, :unknown_user}", %{tenant: tenant, user_id: user_id} do
-    CrmReactor.Repo.query!(
-      "UPDATE global_registry.tenants SET is_active = false WHERE schema_name = $1",
-      [tenant.schema_name]
-    )
+    {:ok, _} = CrmReactor.Tenants.Provisioner.toggle_active(tenant.tenant_id, false)
 
     assert {:error, :unknown_user} = Tenants.schema_for_user(user_id)
   end

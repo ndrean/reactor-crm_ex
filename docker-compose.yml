@@ -20,41 +20,70 @@ services:
         limits:
           memory: 512M
 
-  app:
-    build: .
+  ollama:
+    image: ollama/ollama:latest
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
-      PHX_HOST: ${PHX_HOST}
-      PORT: ${PORT}
-      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
-      WHISPER_URL: ${WHISPER_URL}
-      OLLAMA_URL: ${OLLAMA_URL}
-      OLLAMA_MODEL: ${OLLAMA_MODEL}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      TELEGRAM_SECRET_TOKEN: ${TELEGRAM_SECRET_TOKEN}
-      ADMIN_TOKEN: ${ADMIN_TOKEN}
-      CLOAK_KEY: ${CLOAK_KEY}
-      PHX_SERVER: "true"
+    volumes:
+      - ollama_models:/root/.ollama
     ports:
-      - "127.0.0.1:4000:4000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "127.0.0.1:11435:11434"
     healthcheck:
-      test: ["CMD", "curl", "-fs", "http://localhost:4000/api/health"]
-      interval: 15s
+      test: ["CMD-SHELL", "ollama list | grep -q mxbai-embed-large"]
+      interval: 10s
       timeout: 5s
-      start_period: 20s
-      retries: 3
+      start_period: 120s
+      retries: 12
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama pull mxbai-embed-large:latest
+        ollama pull qwen2.5:7b
+        wait
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: "1.0"
+          memory: 6G
+          cpus: "2.0"
+
+  # app:
+  #   build: .
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     ollama:
+  #       condition: service_healthy
+  #   environment:
+  #     DATABASE_URL: ${DATABASE_URL}
+  #     SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+  #     PHX_HOST: ${PHX_HOST}
+  #     PORT: ${PORT}
+  #     MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+  #     WHISPER_URL: ${WHISPER_URL}
+  #     OLLAMA_URL: http://ollama:11434
+  #     OLLAMA_MODEL: ${OLLAMA_MODEL}
+  #     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+  #     TELEGRAM_SECRET_TOKEN: ${TELEGRAM_SECRET_TOKEN}
+  #     ADMIN_TOKEN: ${ADMIN_TOKEN}
+  #     CLOAK_KEY: ${CLOAK_KEY}
+  #     PHX_SERVER: "true"
+  #   ports:
+  #     - "127.0.0.1:4000:4000"
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-fs", "http://localhost:4000/api/health"]
+  #     interval: 15s
+  #     timeout: 5s
+  #     start_period: 20s
+  #     retries: 3
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 512M
+  #         cpus: "1.0"
 
   whisper:
     image: fedirz/faster-whisper-server:latest-cpu
@@ -78,8 +107,6 @@ services:
       - promdata:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
-    depends_on:
-      - app
     deploy:
       resources:
         limits:
@@ -108,3 +135,4 @@ volumes:
   pgdata:
   promdata:
   grafanadata:
+  ollama_models:

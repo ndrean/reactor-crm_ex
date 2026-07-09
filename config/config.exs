@@ -6,7 +6,13 @@ config :mime, :types, %{
 
 config :crm_reactor,
   ecto_repos: [CrmReactor.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  workflow_modules: %{
+    "contacts" => CrmReactor.Reactors.Modules.Contacts,
+    "todos" => CrmReactor.Reactors.Modules.Todos,
+    "data" => CrmReactor.Reactors.Modules.DataExport,
+    "help" => CrmReactor.Reactors.Modules.Help
+  }
 
 config :crm_reactor, CrmReactorWeb.Endpoint,
   url: [host: "localhost"],
@@ -29,11 +35,14 @@ config :swoosh, :api_client, false
 
 config :crm_reactor, Oban,
   repo: CrmReactor.Repo,
-  queues: [ingest: 10, mutations: 5, maintenance: 1],
+  queues: [ingest: 10, mutations: 5, maintenance: 1, webhooks: 3],
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [
-       {"0 3 * * *", CrmReactor.Workers.RetentionWorker}
+       {"0 3 * * *", CrmReactor.Workers.RetentionWorker},
+       {"30 3 * * *", CrmReactor.Workers.FileCleanupWorker},
+       {"0 4 * * 0", CrmReactor.Workers.ThresholdCalibrationWorker},
+       {"30 5 * * *", CrmReactor.Workers.ExampleReviewWorker}
      ]}
   ]
 
@@ -46,5 +55,7 @@ config :crm_reactor, CrmReactor.PromEx,
   drop_metrics_groups: [],
   grafana: :disabled,
   metrics_server: :disabled
+
+config :nx, :default_backend, EXLA.Backend
 
 import_config "#{config_env()}.exs"

@@ -36,6 +36,7 @@ defmodule CrmReactor.Reactors.MasterIngest do
     argument(:text, result(:text))
     argument(:attachment, input(:attachment))
     argument(:tenant, result(:tenant))
+    argument(:user_id, input(:user_id))
   end
 
   step :result, CrmReactor.Reactors.Steps.DispatchModule do
@@ -53,6 +54,8 @@ defmodule CrmReactor.Reactors.MasterIngest do
     argument(:tenant, result(:tenant))
     argument(:classification, result(:classification))
     argument(:attachment, input(:attachment))
+    argument(:user_id, input(:user_id))
+    argument(:text, result(:text))
   end
 
   return(:finalize)

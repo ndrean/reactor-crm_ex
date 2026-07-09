@@ -31,6 +31,8 @@ defmodule CrmReactorWeb.Router do
     post "/admin/provision", AdminController, :provision
     post "/admin/toggle", AdminController, :toggle
     put "/admin/subscriptions", AdminController, :set_subscription
+    put "/admin/webhook", AdminController, :set_webhook
+    get "/admin/webhook_secret", AdminController, :get_webhook_secret
     get "/admin/subjects/:identifier/export", AdminController, :export_subject
     post "/admin/subjects/:identifier/email-export", AdminController, :email_subject
     delete "/admin/subjects/:identifier", AdminController, :erase_subject

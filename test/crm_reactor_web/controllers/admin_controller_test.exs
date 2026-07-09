@@ -1,5 +1,6 @@
 defmodule CrmReactorWeb.AdminControllerTest do
   use CrmReactorWeb.ConnCase
+  alias CrmReactor.AI.SubscriptionCache
 
   @admin_token "dev-admin-token"
 
@@ -152,6 +153,76 @@ defmodule CrmReactorWeb.AdminControllerTest do
     |> json_response(404)
   end
 
+  describe "PUT /api/admin/webhook" do
+    test "sets webhook URL and returns it", %{conn: conn} do
+      fixture = CrmReactor.TestFixtures.provision_test_tenant("wh")
+      on_exit(fn -> CrmReactor.TestFixtures.cleanup_tenant(fixture) end)
+
+      resp =
+        conn
+        |> put("/api/admin/webhook", %{
+          tenant_id: fixture.tenant.tenant_id,
+          webhook_url: "https://example.com/hook"
+        })
+        |> json_response(200)
+
+      assert resp["success"] == true
+      assert resp["webhook_url"] == "https://example.com/hook"
+    end
+
+    test "returns 404 for unknown tenant", %{conn: conn} do
+      conn
+      |> put("/api/admin/webhook", %{
+        tenant_id: "nonexistent_tenant_xyz",
+        webhook_url: "https://example.com/hook"
+      })
+      |> json_response(404)
+    end
+
+    test "returns 400 when params are missing", %{conn: conn} do
+      conn
+      |> put("/api/admin/webhook", %{tenant_id: "x"})
+      |> json_response(400)
+    end
+  end
+
+  describe "GET /api/admin/webhook_secret" do
+    test "returns webhook secret after setting webhook", %{conn: conn} do
+      fixture = CrmReactor.TestFixtures.provision_test_tenant("whs")
+      on_exit(fn -> CrmReactor.TestFixtures.cleanup_tenant(fixture) end)
+
+      conn
+      |> put("/api/admin/webhook", %{
+        tenant_id: fixture.tenant.tenant_id,
+        webhook_url: "https://example.com/hook"
+      })
+      |> json_response(200)
+
+      resp =
+        conn
+        |> get("/api/admin/webhook_secret", %{tenant_id: fixture.tenant.tenant_id})
+        |> json_response(200)
+
+      assert is_binary(resp["webhook_secret"])
+      assert String.length(resp["webhook_secret"]) == 64
+    end
+
+    test "returns 404 for unknown tenant", %{conn: conn} do
+      conn
+      |> get("/api/admin/webhook_secret", %{tenant_id: "nonexistent_tenant_xyz"})
+      |> json_response(404)
+    end
+
+    test "returns 404 when no webhook configured", %{conn: conn} do
+      fixture = CrmReactor.TestFixtures.provision_test_tenant("whn")
+      on_exit(fn -> CrmReactor.TestFixtures.cleanup_tenant(fixture) end)
+
+      conn
+      |> get("/api/admin/webhook_secret", %{tenant_id: fixture.tenant.tenant_id})
+      |> json_response(404)
+    end
+  end
+
   describe "PUT /api/admin/subscriptions" do
     test "disables a workflow for a tenant", %{conn: conn} do
       tid = "sub_ctrl_test_#{System.unique_integer([:positive])}"
@@ -175,7 +246,7 @@ defmodule CrmReactorWeb.AdminControllerTest do
       assert resp["tenant_id"] == tid
       assert resp["workflow_name"] == "contacts"
       assert resp["enabled"] == false
-      assert CrmReactor.AI.SubscriptionCache.enabled?(tid, "contacts") == false
+      assert SubscriptionCache.enabled?(tid, "contacts") == false
     end
 
     test "re-enables a workflow for a tenant", %{conn: conn} do
@@ -201,7 +272,7 @@ defmodule CrmReactorWeb.AdminControllerTest do
         |> json_response(200)
 
       assert resp["enabled"] == true
-      assert CrmReactor.AI.SubscriptionCache.enabled?(tid, "todos") == true
+      assert SubscriptionCache.enabled?(tid, "todos") == true
     end
 
     test "returns 400 when params are missing", %{conn: conn} do

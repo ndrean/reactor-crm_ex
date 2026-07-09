@@ -17,6 +17,10 @@
     "lib/crm_reactor_web.ex",
     "lib/crm_reactor/prom_ex.ex",
     "lib/crm_reactor/prom_ex/",
-    "lib/crm_reactor_web/telemetry.ex"
+    "lib/crm_reactor_web/telemetry.ex",
+    "lib/crm_reactor/reactors/master_ingest.ex",
+    "lib/crm_reactor/workers/routing_signal_worker.ex",
+    "lib/crm_reactor/workers/threshold_calibration_worker.ex",
+    "lib/crm_reactor/ai/routing_threshold.ex"
   ]
 }

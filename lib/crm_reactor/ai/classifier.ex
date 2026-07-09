@@ -7,6 +7,65 @@ defmodule CrmReactor.AI.Classifier do
   require Logger
 
   @impl true
+  def classify_workflow(text, registry_entries, cosine_hints) do
+    system_prompt = Prompts.build_pass1_prompt(registry_entries, cosine_hints)
+    model = Application.get_env(:crm_reactor, :mistral_model_small, "mistral-small-latest")
+    api_key = Application.fetch_env!(:crm_reactor, :mistral_api_key)
+
+    case Req.post("https://api.mistral.ai/v1/chat/completions",
+           json: %{
+             model: model,
+             messages: [
+               %{role: "system", content: system_prompt},
+               %{role: "user", content: text}
+             ],
+             response_format: %{type: "json_object"},
+             temperature: 0
+           },
+           headers: [{"authorization", "Bearer #{api_key}"}],
+           receive_timeout: 10_000
+         ) do
+      {:ok, %{status: 200, body: body}} ->
+        parse_pass1_response(body)
+
+      {:ok, %{status: status, body: body}} ->
+        Logger.warning("Mistral Pass 1 error #{status}: #{inspect(body)}")
+        {:error, "Mistral Pass 1 error #{status}"}
+
+      {:error, reason} ->
+        Logger.warning("Mistral Pass 1 request failed: #{inspect(reason)}")
+        {:error, "Mistral Pass 1 request failed: #{inspect(reason)}"}
+    end
+  end
+
+  defp parse_pass1_response(body) do
+    [choice | _] = body["choices"]
+    usage = body["usage"]
+
+    case Jason.decode(choice["message"]["content"]) do
+      {:ok, %{"workflow" => w, "confidence" => c}} when is_binary(w) and is_number(c) ->
+        # LLM sometimes returns "contacts: list" instead of "contacts" — strip action part
+        workflow = w |> String.split(~r/[:\s]/, parts: 2) |> List.first()
+
+        pass1_usage = %{
+          prompt_tokens: usage["prompt_tokens"] || 0,
+          completion_tokens: usage["completion_tokens"] || 0,
+          total_tokens: usage["total_tokens"] || 0
+        }
+
+        {:ok, {workflow, c, pass1_usage}}
+
+      {:ok, other} ->
+        Logger.warning("Unexpected Pass 1 response shape: #{inspect(other)}")
+        {:error, :unexpected_pass1_response}
+
+      {:error, reason} ->
+        Logger.warning("Pass 1 JSON decode error: #{inspect(reason)}")
+        {:error, :pass1_json_decode_error}
+    end
+  end
+
+  @impl true
   def classify_with_file(instruction, file_content, content_type, registry_entries) do
     system_prompt = Prompts.build_vision_prompt(registry_entries)
     model = Application.get_env(:crm_reactor, :mistral_vision_model, "ministral-3b-2512")
@@ -42,12 +101,19 @@ defmodule CrmReactor.AI.Classifier do
   end
 
   @impl true
-  def classify(text, registry_entries) do
-    system_prompt = Prompts.build_master_prompt(registry_entries)
+  def classify(text, registry_entries), do: classify(text, registry_entries, nil)
+
+  @impl true
+  def classify(text, registry_entries, routing_hint),
+    do: classify(text, registry_entries, routing_hint, [])
+
+  @impl true
+  def classify(text, registry_entries, routing_hint, context) do
+    system_prompt = Prompts.build_master_prompt(registry_entries, routing_hint, context)
     start_time = Telemetry.classify_start()
 
     model_small = Application.get_env(:crm_reactor, :mistral_model_small, "mistral-small-latest")
-    model_large = Application.get_env(:crm_reactor, :mistral_model_large, "mistral-medium-latest")
+    model_large = Application.get_env(:crm_reactor, :mistral_model_large, "codestral-latest")
 
     case classify_mistral(text, system_prompt, model_small) do
       {:ok, %{steps: [%{workflow: "none"}]}} ->
@@ -108,7 +174,7 @@ defmodule CrmReactor.AI.Classifier do
 
   defp classify_ollama(text, system_prompt) do
     ollama_url =
-      Application.get_env(:crm_reactor, :ollama_url, "http://host.docker.internal:11434")
+      Application.get_env(:crm_reactor, :ollama_url, "http://127.0.0.1:11435")
 
     model = Application.get_env(:crm_reactor, :ollama_model, "qwen2.5:7b")
 
@@ -126,15 +192,21 @@ defmodule CrmReactor.AI.Classifier do
          ) do
       {:ok, %{status: 200, body: body}} ->
         content = body["message"]["content"]
-        parsed = Jason.decode!(content)
 
-        {:ok,
-         %{
-           steps: parse_steps(parsed),
-           prompt_tokens: 0,
-           completion_tokens: 0,
-           total_tokens: 0
-         }}
+        case Jason.decode(content) do
+          {:ok, parsed} ->
+            {:ok,
+             %{
+               steps: parse_steps(parsed),
+               prompt_tokens: 0,
+               completion_tokens: 0,
+               total_tokens: 0
+             }}
+
+          {:error, reason} ->
+            Logger.warning("Ollama JSON decode error: #{inspect(reason)}")
+            {:error, :ollama_json_decode_error}
+        end
 
       {:ok, %{status: status, body: body}} ->
         {:error, "Ollama error #{status}: #{inspect(body)}"}
@@ -146,16 +218,22 @@ defmodule CrmReactor.AI.Classifier do
 
   defp parse_llm_response(body) do
     [choice | _] = body["choices"]
-    parsed = Jason.decode!(choice["message"]["content"])
     usage = body["usage"]
 
-    {:ok,
-     %{
-       steps: parse_steps(parsed),
-       prompt_tokens: usage["prompt_tokens"],
-       completion_tokens: usage["completion_tokens"],
-       total_tokens: usage["total_tokens"]
-     }}
+    case Jason.decode(choice["message"]["content"]) do
+      {:ok, parsed} ->
+        {:ok,
+         %{
+           steps: parse_steps(parsed),
+           prompt_tokens: usage["prompt_tokens"],
+           completion_tokens: usage["completion_tokens"],
+           total_tokens: usage["total_tokens"]
+         }}
+
+      {:error, reason} ->
+        Logger.warning("LLM JSON decode error: #{inspect(reason)}")
+        {:error, :llm_json_decode_error}
+    end
   end
 
   # New format: {"steps": [...]}

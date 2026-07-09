@@ -8,9 +8,11 @@ defmodule CrmReactorWeb.Plugs.RateLimiter do
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    user_id = conn.params["user_id"] || conn.remote_ip |> :inet.ntoa() |> to_string()
+    ip = conn.remote_ip |> :inet.ntoa() |> to_string()
+    user_id = conn.params["user_id"]
+    key = if user_id, do: "crm:#{user_id}:#{ip}", else: "crm_ip:#{ip}"
 
-    case Hammer.check_rate("crm:#{user_id}", @window_ms, @max_requests) do
+    case Hammer.check_rate(key, @window_ms, @max_requests) do
       {:allow, _count} ->
         conn
 

@@ -4,17 +4,9 @@ defmodule CrmReactor.Reactors.Steps.DispatchModule do
 
   alias CrmReactor.AI.SubscriptionCache
   alias CrmReactor.CRM.ExecutionLog
-  alias CrmReactor.Reactors.Modules
   alias CrmReactor.Reactors.WorkflowInterpreter
   alias CrmReactor.Repo
   alias CrmReactor.Workers.PendingTimeoutWorker
-
-  @module_map %{
-    "contacts" => Modules.Contacts,
-    "todos" => Modules.Todos,
-    "data" => Modules.DataExport,
-    "help" => Modules.Help
-  }
 
   @destructive_actions ~w[update delete]
   @pending_timeout_seconds 15 * 60
@@ -72,7 +64,7 @@ defmodule CrmReactor.Reactors.Steps.DispatchModule do
           raw_text: raw_text
         }
 
-        case WorkflowInterpreter.run(steps, @module_map, context) do
+        case WorkflowInterpreter.run(steps, workflow_modules(), context) do
           {:ok, %{action: "clarify", confirm_items: items, confirm_step: step_template} = result} ->
             store_fanout_pending(items, step_template, result.output, log.id, context)
 
@@ -111,5 +103,9 @@ defmodule CrmReactor.Reactors.Steps.DispatchModule do
     %{"pending_id" => pending_id}
     |> PendingTimeoutWorker.new(schedule_in: @pending_timeout_seconds)
     |> Oban.insert()
+  end
+
+  defp workflow_modules do
+    Application.get_env(:crm_reactor, :workflow_modules)
   end
 end

@@ -1,7 +1,9 @@
 defmodule CrmReactor.AI.Prompts do
   @moduledoc "Builds LLM prompts from module registry entries."
 
-  def build_master_prompt(registry_entries) do
+  def build_master_prompt(registry_entries, routing_hint \\ nil, context \\ [])
+
+  def build_master_prompt(registry_entries, routing_hint, context) do
     modules_desc =
       registry_entries
       |> Enum.group_by(& &1.workflow_name)
@@ -9,6 +11,19 @@ defmodule CrmReactor.AI.Prompts do
         actions_desc = Enum.map_join(entries, "\n", &format_action/1)
         "- #{workflow}:\n#{actions_desc}"
       end)
+
+    hint_section =
+      if routing_hint do
+        """
+
+        <routing_hint>
+        Semantic similarity suggests this request is most likely about: #{routing_hint}.
+        Use as a soft hint — override if the message content indicates otherwise.
+        </routing_hint>
+        """
+      else
+        ""
+      end
 
     """
     <role>
@@ -34,7 +49,7 @@ defmodule CrmReactor.AI.Prompts do
     No module matches:
     {"steps":[{"workflow":"none","action":"none","params":{},"routing_path":"deterministic"}]}
     </modules>
-
+    #{hint_section}#{context_section(context)}
     <rules>
     COMMAND vs QUESTION: "ajoute un email à Marie" → matching action. "puis-je ajouter un email ?", "que peux-tu faire ?" → "help".
 
@@ -73,7 +88,51 @@ defmodule CrmReactor.AI.Prompts do
     """
   end
 
-  def build_vision_prompt(registry_entries) do
+  def build_pass1_prompt(registry_entries, cosine_hints) do
+    workflows_desc =
+      registry_entries
+      |> Enum.group_by(& &1.workflow_name)
+      |> Enum.map_join("\n", fn {workflow, entries} ->
+        action_names = entries |> Enum.map(& &1.action) |> Enum.uniq() |> Enum.join(", ")
+        "- #{workflow}: #{action_names}"
+      end)
+
+    hints_section =
+      case cosine_hints do
+        [] ->
+          "Aucune indication sémantique disponible."
+
+        hints ->
+          hints
+          |> Enum.with_index(1)
+          |> Enum.map_join("\n", fn {{workflow, score}, rank} ->
+            "#{rank}. #{workflow} (score: #{Float.round(score, 3)})"
+          end)
+      end
+
+    """
+    <role>
+    Tu es un routeur de workflow pour un CRM francophone.
+    Identifie le workflow qui correspond le mieux au message utilisateur.
+    Réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni explication.
+    </role>
+
+    <output_format>
+    {"workflow": "nom_workflow", "confidence": 0.0-1.0}
+    Si aucun workflow ne correspond: {"workflow": "none", "confidence": 1.0}
+    </output_format>
+
+    <workflows>
+    #{workflows_desc}
+    </workflows>
+
+    <cosine_hints>
+    #{hints_section}
+    </cosine_hints>
+    """
+  end
+
+  def build_vision_prompt(registry_entries, _routing_hint \\ nil) do
     modules_desc =
       registry_entries
       |> Enum.group_by(& &1.workflow_name)
@@ -136,4 +195,27 @@ defmodule CrmReactor.AI.Prompts do
 
   defp format_hint(nil), do: ""
   defp format_hint(hint), do: " (#{hint})"
+
+  defp context_section([]), do: ""
+
+  defp context_section(context) do
+    lines =
+      Enum.map_join(context, "\n", fn
+        {:user, text} -> "User: #{text}"
+        {:assistant, text} -> "Assistant: #{String.slice(text, 0, 200)}"
+      end)
+
+    """
+
+    <context>
+    Recent conversation:
+    #{lines}
+
+    IMPORTANT: If the current message contains pronouns (le, la, les, lui, ce, celui-ci, celle-ci, y, en, etc.)
+    or demonstratives, resolve them using the conversation above. Extract the actual entity name/identifier
+    from the previous exchange and use it in params. Example: if previous reply mentions "Tom User" and
+    user says "supprime-le", use search_name="Tom User", NOT "le".
+    </context>
+    """
+  end
 end

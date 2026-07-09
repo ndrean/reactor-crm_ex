@@ -1,0 +1,8 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Tom User
+N:USER;Tom;;;
+EMAIL:t.user@mail.com
+TEL;TYPE=CELL:+33.6.21.31.41.51.61
+ORG:free_me
+END:VCARD

@@ -29,7 +29,7 @@ defmodule CrmReactor.AI.InputGuard do
     ~r/\bINSERT\s+INTO\b/i,
     ~r/\bTRUNCATE\b/i,
     ~r/;\s*(DROP|DELETE|UPDATE|INSERT|ALTER|GRANT)/i,
-    ~r/pg_\w+/i,
+    ~r/\bpg_(catalog|shadow|roles|user|tables|stat|settings|authid|database)\b/i,
     ~r/information_schema/i,
     ~r/\bUNION\s+(ALL\s+)?SELECT\b/i
   ]

@@ -4,6 +4,7 @@ defmodule CrmReactor.GDPR.DataSubject do
   right of access and data portability (Art. 15, 20).
   """
 
+  alias CrmReactor.AI.RoutingSignal
   alias CrmReactor.CRM.{Contact, ExecutionLog}
   alias CrmReactor.Emails.GdprExportEmail
   alias CrmReactor.Mailer
@@ -58,8 +59,9 @@ defmodule CrmReactor.GDPR.DataSubject do
       nil ->
         {:error, :not_found}
 
-      {_tenant, schema, _user_email} ->
+      {tenant, schema, _user_email} ->
         Repo.transaction(fn ->
+          redact_routing_signals(tenant.tenant_id, schema, user_identifier)
           redact_execution_logs(schema, user_identifier)
           remove_user_mapping(user_identifier)
         end)
@@ -158,6 +160,23 @@ defmodule CrmReactor.GDPR.DataSubject do
       ],
       prefix: schema
     )
+  end
+
+  defp redact_routing_signals(tenant_id, schema, user_identifier) do
+    user_inputs =
+      from(l in ExecutionLog,
+        where: l.triggered_by == ^user_identifier,
+        select: l.raw_input,
+        distinct: true
+      )
+      |> Repo.all(prefix: schema)
+
+    if user_inputs != [] do
+      from(r in RoutingSignal,
+        where: r.tenant_id == ^tenant_id and r.raw_input in ^user_inputs
+      )
+      |> Repo.update_all(set: [raw_input: @redacted])
+    end
   end
 
   defp remove_user_mapping(user_identifier) do

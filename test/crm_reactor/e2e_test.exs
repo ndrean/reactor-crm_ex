@@ -83,9 +83,9 @@ defmodule CrmReactor.E2ETest do
     |> json_response(200)
   end
 
-  defp crm_confirm(conn, pending_id, decision) do
+  defp crm_confirm(conn, pending_id, decision, user_id) do
     conn
-    |> post("/api/crm/confirm", %{pending_id: pending_id, decision: decision})
+    |> post("/api/crm/confirm", %{pending_id: pending_id, decision: decision, user_id: user_id})
     |> json_response(200)
   end
 
@@ -107,7 +107,7 @@ defmodule CrmReactor.E2ETest do
     resp = crm_call(conn, uid, "modifie le téléphone de Marie Dupont à 0611111111")
     assert resp["pending_id"], "expected pending_id, got: #{inspect(resp)}"
 
-    confirm_resp = crm_confirm(conn, resp["pending_id"], "confirm")
+    confirm_resp = crm_confirm(conn, resp["pending_id"], "confirm", uid)
     assert confirm_resp["output"] =~ "modifié"
   end
 
@@ -115,7 +115,7 @@ defmodule CrmReactor.E2ETest do
     resp = crm_call(conn, uid, "supprime le contact Paul Martin")
     assert resp["pending_id"], "expected pending_id, got: #{inspect(resp)}"
 
-    reject_resp = crm_confirm(conn, resp["pending_id"], "reject")
+    reject_resp = crm_confirm(conn, resp["pending_id"], "reject", uid)
     assert reject_resp["output"] =~ "annulée"
   end
 
@@ -152,7 +152,7 @@ defmodule CrmReactor.E2ETest do
 
     assert resp["pending_id"], "expected pending_id, got: #{inspect(resp)}"
 
-    confirm_resp = crm_confirm(conn, resp["pending_id"], "confirm")
+    confirm_resp = crm_confirm(conn, resp["pending_id"], "confirm", uid)
     assert confirm_resp["output"] =~ "modifiée"
   end
 

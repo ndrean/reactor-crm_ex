@@ -50,4 +50,37 @@ defmodule CrmReactor.AI.ClassifierTest do
     [step] = result.steps
     assert step.workflow == "none"
   end
+
+  @tag :requires_mistral
+  test "classify_workflow/3 returns workflow name, confidence, and usage", %{registry: registry} do
+    {:ok, {workflow, confidence, usage}} =
+      Classifier.classify_workflow("ajoute un contact Marie", registry, [])
+
+    assert is_binary(workflow)
+    assert is_float(confidence)
+    assert confidence >= 0.0 and confidence <= 1.0
+    assert workflow == "contacts"
+    assert usage.prompt_tokens > 0
+    assert usage.completion_tokens > 0
+  end
+
+  @tag :requires_mistral
+  test "classify_workflow/3 returns none for gibberish", %{registry: registry} do
+    {:ok, {workflow, confidence, _usage}} =
+      Classifier.classify_workflow("blablabla asdfgh", registry, [])
+
+    assert workflow == "none"
+    assert is_float(confidence)
+  end
+
+  @tag :requires_mistral
+  test "escalation: codestral handles what mistral-small returns none for", %{registry: registry} do
+    # "que puis-je faire ici ?" is ambiguous enough that small may return "none",
+    # triggering escalation to codestral-latest
+    {:ok, result} = Classifier.classify("que puis-je faire ici ?", registry)
+    [step | _] = result.steps
+    # Either model should route this to "help"
+    assert step.workflow == "help"
+    assert result.total_tokens > 0
+  end
 end

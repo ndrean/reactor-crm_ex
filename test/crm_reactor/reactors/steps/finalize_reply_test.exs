@@ -1,10 +1,12 @@
 defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
   use CrmReactor.DataCase
+  use Oban.Testing, repo: CrmReactor.Repo
 
   alias CrmReactor.CRM.ExecutionLog
   alias CrmReactor.Reactors.Steps.FinalizeReply
   alias CrmReactor.Repo
   alias CrmReactor.TestFixtures
+  alias CrmReactor.Workers.WebhookWorker
 
   setup do
     fixture = TestFixtures.provision_test_tenant()
@@ -25,7 +27,7 @@ defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
       admin_email: nil
     }
 
-    %{log: log, tenant: tenant, schema: fixture.tenant.schema_name}
+    %{log: log, tenant: tenant, schema: fixture.tenant.schema_name, user_id: fixture.user_id}
   end
 
   defp classification(workflow \\ "contacts", action \\ "search", tokens \\ {10, 5, 15}) do
@@ -39,6 +41,11 @@ defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
     }
   end
 
+  defp run_finalize(args, extra \\ %{}) do
+    base = Map.merge(%{user_id: "test_user", text: "test input"}, extra)
+    FinalizeReply.run(Map.merge(base, args), %{}, [])
+  end
+
   test "pending action skips DB update and returns result unchanged", %{
     log: log,
     tenant: tenant,
@@ -47,17 +54,13 @@ defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
     result = %{action: "pending", output: "Confirmez-vous ?", pending_id: "some-uuid"}
 
     assert {:ok, ^result} =
-             FinalizeReply.run(
-               %{
-                 result: result,
-                 log: log,
-                 tenant: tenant,
-                 classification: classification(),
-                 attachment: nil
-               },
-               %{},
-               []
-             )
+             run_finalize(%{
+               result: result,
+               log: log,
+               tenant: tenant,
+               classification: classification(),
+               attachment: nil
+             })
 
     # Log should still be in "processing" — not touched by FinalizeReply
     assert Repo.get!(ExecutionLog, log.id, prefix: schema).status == "processing"
@@ -68,17 +71,13 @@ defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
     result = %{action: "search", output: "2 contacts trouvés"}
 
     assert {:ok, ^result} =
-             FinalizeReply.run(
-               %{
-                 result: result,
-                 log: log,
-                 tenant: tenant,
-                 classification: classification(),
-                 attachment: nil
-               },
-               %{},
-               []
-             )
+             run_finalize(%{
+               result: result,
+               log: log,
+               tenant: tenant,
+               classification: classification(),
+               attachment: nil
+             })
 
     updated = Repo.get!(ExecutionLog, log.id, prefix: schema)
     assert updated.status == "completed"
@@ -93,17 +92,13 @@ defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
     result = %{action: "count", output: "Nombre de contacts : 2"}
 
     assert {:ok, ^result} =
-             FinalizeReply.run(
-               %{
-                 result: result,
-                 log: log,
-                 tenant: tenant,
-                 classification: classification("contacts", "count", {5, 3, 8}),
-                 attachment: nil
-               },
-               %{},
-               []
-             )
+             run_finalize(%{
+               result: result,
+               log: log,
+               tenant: tenant,
+               classification: classification("contacts", "count", {5, 3, 8}),
+               attachment: nil
+             })
   end
 
   test "with attachment saves execution_attachment record", %{
@@ -121,17 +116,13 @@ defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
     }
 
     assert {:ok, ^result} =
-             FinalizeReply.run(
-               %{
-                 result: result,
-                 log: log,
-                 tenant: tenant,
-                 classification: classification("contacts", "create"),
-                 attachment: attachment
-               },
-               %{},
-               []
-             )
+             run_finalize(%{
+               result: result,
+               log: log,
+               tenant: tenant,
+               classification: classification("contacts", "create"),
+               attachment: attachment
+             })
 
     import Ecto.Query
 
@@ -144,5 +135,79 @@ defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
     assert record.filename == "contacts.vcf"
     assert record.storage_key == "tenant_test/uuid-contacts.vcf"
     assert record.size_bytes == 250
+  end
+
+  test "enqueues webhook job when tenant has webhook_url configured", %{
+    log: log,
+    tenant: tenant
+  } do
+    tenant_with_webhook =
+      Map.merge(tenant, %{
+        webhook_url: "https://example.com/hook",
+        webhook_secret: "test-secret-key",
+        tenant_id: "test_tenant"
+      })
+
+    result = %{action: "search", output: "2 contacts trouvés", data: %{"count" => 2}}
+
+    assert {:ok, ^result} =
+             run_finalize(%{
+               result: result,
+               log: log,
+               tenant: tenant_with_webhook,
+               classification: classification(),
+               attachment: nil
+             })
+
+    assert_enqueued(
+      worker: WebhookWorker,
+      args: %{
+        "webhook_url" => "https://example.com/hook",
+        "webhook_secret" => "test-secret-key"
+      }
+    )
+  end
+
+  test "does not enqueue webhook when tenant has no webhook_url", %{
+    log: log,
+    tenant: tenant
+  } do
+    result = %{action: "search", output: "2 contacts trouvés"}
+
+    assert {:ok, ^result} =
+             run_finalize(%{
+               result: result,
+               log: log,
+               tenant: tenant,
+               classification: classification(),
+               attachment: nil
+             })
+
+    refute_enqueued(worker: WebhookWorker)
+  end
+
+  test "does not enqueue webhook for non-terminal actions", %{
+    log: log,
+    tenant: tenant
+  } do
+    tenant_with_webhook =
+      Map.merge(tenant, %{
+        webhook_url: "https://example.com/hook",
+        webhook_secret: "test-secret-key",
+        tenant_id: "test_tenant"
+      })
+
+    result = %{action: "clarify", output: "Pouvez-vous préciser ?"}
+
+    assert {:ok, ^result} =
+             run_finalize(%{
+               result: result,
+               log: log,
+               tenant: tenant_with_webhook,
+               classification: classification(),
+               attachment: nil
+             })
+
+    refute_enqueued(worker: WebhookWorker)
   end
 end

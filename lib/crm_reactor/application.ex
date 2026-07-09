@@ -10,16 +10,23 @@ defmodule CrmReactor.Application do
       CrmReactorWeb.Telemetry,
       CrmReactor.Repo,
       CrmReactor.Vault,
+      CrmReactor.Tenants.TenantCache,
       CrmReactor.AI.RegistryCache,
       CrmReactor.AI.SubscriptionCache,
+      CrmReactor.AI.ExamplesCache,
+      CrmReactor.AI.ThresholdCache,
       {DNSCluster, query: Application.get_env(:crm_reactor, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: CrmReactor.PubSub},
       {Oban, Application.fetch_env!(:crm_reactor, Oban)},
       CrmReactorWeb.Endpoint
     ]
 
+    CrmReactor.AI.ConversationCache.create_table()
+
     opts = [strategy: :one_for_one, name: CrmReactor.Supervisor]
-    Supervisor.start_link(children, opts)
+    result = Supervisor.start_link(children, opts)
+    CrmReactor.AI.Similarity.warmup()
+    result
   end
 
   # coveralls-ignore-start

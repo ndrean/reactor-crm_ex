@@ -11,6 +11,7 @@ defmodule CrmReactor.MixProject do
       aliases: aliases(),
       deps: deps(),
       listeners: [Phoenix.CodeReloader],
+      dialyzer: [plt_add_apps: [:mix]],
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
         coveralls: :test,
@@ -75,7 +76,9 @@ defmodule CrmReactor.MixProject do
       {:mox, "~> 1.0", only: :test},
       {:excoveralls, "~> 0.18", only: :test},
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:bypass, "~> 2.1", only: :test}
+      {:bypass, "~> 2.1", only: :test},
+      {:nx, "~> 0.12.1"},
+      {:exla, "~> 0.12.0"}
     ]
   end
 

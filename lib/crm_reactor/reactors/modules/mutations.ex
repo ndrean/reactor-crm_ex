@@ -2,24 +2,26 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
   @moduledoc "2-step confirm/reject flow for contact and todo mutations."
 
   alias CrmReactor.CRM.{Contact, ExecutionLog, Todo}
-  alias CrmReactor.Reactors.Modules
   alias CrmReactor.Reactors.Modules.DataExport
   alias CrmReactor.Repo
-  alias CrmReactor.Tenants.Tenant
+  alias CrmReactor.Tenants.{Tenant, UserMapping}
   import Ecto.Query
 
-  @module_map %{
-    "contacts" => Modules.Contacts,
-    "todos" => Modules.Todos,
-    "data" => Modules.DataExport,
-    "help" => Modules.Help
-  }
+  @doc """
+  Confirms or rejects a pending mutation.
 
-  # System callers (PendingTimeoutWorker) omit user_id — auth is bypassed.
-  def confirm(pending_id, decision, user_id \\ nil) do
-    with log when not is_nil(log) <- find_pending_log(pending_id),
-         :ok <- authorize(log.triggered_by, user_id),
-         schema <- log.schema do
+  When `user_id` is provided, the search is scoped to the user's tenant schema
+  and the caller must match the `triggered_by` on the log entry.
+
+  When `user_id` is nil (system callers like PendingTimeoutWorker), all tenant
+  schemas are scanned and authorization is bypassed.
+  """
+  def confirm(pending_id, decision, user_id \\ nil)
+
+  def confirm(pending_id, decision, user_id) when is_binary(user_id) do
+    with schema when is_binary(schema) <- resolve_schema(user_id),
+         log when not is_nil(log) <- find_pending_in_schema(pending_id, schema),
+         :ok <- authorize(log.triggered_by, user_id) do
       dispatch_confirm(log, schema, decision)
     else
       nil -> {:error, :pending_not_found}
@@ -27,7 +29,14 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
     end
   end
 
-  defp authorize(_triggered_by, nil), do: :ok
+  # System callers (PendingTimeoutWorker) scan all schemas — no user context.
+  def confirm(pending_id, decision, nil) do
+    case find_pending_log_all_schemas(pending_id) do
+      nil -> {:error, :pending_not_found}
+      log -> dispatch_confirm(log, log.schema, decision)
+    end
+  end
+
   defp authorize(triggered_by, user_id) when triggered_by == user_id, do: :ok
   defp authorize(_triggered_by, _user_id), do: {:error, :unauthorized}
 
@@ -65,27 +74,46 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
   defp valid_email?(email),
     do: is_binary(email) and String.match?(email, ~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
 
-  defp find_pending_log(pending_id) do
-    schemas =
-      from(t in Tenant, select: t.schema_name)
-      |> Repo.all()
+  defp resolve_schema(user_id) do
+    Repo.one(
+      from m in UserMapping,
+        join: t in Tenant,
+        on: t.tenant_id == m.tenant_id,
+        where: m.user_identifier == ^user_id,
+        select: t.schema_name
+    )
+  end
+
+  defp find_pending_in_schema(pending_id, schema) do
+    case pending_log_query(pending_id) |> Repo.one(prefix: schema) do
+      nil -> nil
+      log -> Map.put(log, :schema, schema)
+    end
+  end
+
+  # System-only: scan all schemas (PendingTimeoutWorker auto-reject).
+  defp find_pending_log_all_schemas(pending_id) do
+    schemas = from(t in Tenant, select: t.schema_name) |> Repo.all()
 
     Enum.find_value(schemas, fn schema ->
-      case from(l in ExecutionLog,
-             where: l.pending_id == ^pending_id and l.status == "pending",
-             select: %{
-               id: l.id,
-               action: l.action,
-               module: l.module,
-               proposed_params: l.proposed_params,
-               triggered_by: l.triggered_by
-             }
-           )
-           |> Repo.one(prefix: schema) do
+      case pending_log_query(pending_id) |> Repo.one(prefix: schema) do
         nil -> nil
         log -> Map.put(log, :schema, schema)
       end
     end)
+  end
+
+  defp pending_log_query(pending_id) do
+    from(l in ExecutionLog,
+      where: l.pending_id == ^pending_id and l.status == "pending",
+      select: %{
+        id: l.id,
+        action: l.action,
+        module: l.module,
+        proposed_params: l.proposed_params,
+        triggered_by: l.triggered_by
+      }
+    )
   end
 
   defp execute_fanout(
@@ -99,7 +127,7 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
       Enum.map(items, fn item ->
         step_params = Map.put(params["params"] || %{}, map_param, item)
 
-        case Map.get(@module_map, params["workflow"]) do
+        case Map.get(workflow_modules(), params["workflow"]) do
           nil ->
             {:ok, %{output: "Module inconnu : #{params["workflow"]}", action: "none"}}
 
@@ -199,5 +227,9 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
     |> Repo.update!(prefix: schema)
 
     {:ok, %{output: output, action: log.action}}
+  end
+
+  defp workflow_modules do
+    Application.get_env(:crm_reactor, :workflow_modules)
   end
 end

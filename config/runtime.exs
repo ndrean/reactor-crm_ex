@@ -3,8 +3,10 @@ import Config
 config :crm_reactor,
   mistral_api_key: System.get_env("MISTRAL_API_KEY"),
   mistral_model_small: System.get_env("MISTRAL_MODEL_SMALL", "mistral-small-latest"),
-  mistral_model_large: System.get_env("MISTRAL_MODEL_LARGE", "mistral-medium-latest"),
+  mistral_model_large: System.get_env("MISTRAL_MODEL_LARGE", "codestral-latest"),
   mistral_vision_model: System.get_env("MISTRAL_VISION_MODEL", "ministral-3b-2512"),
+  mistral_pass1_model: System.get_env("MISTRAL_PASS1_MODEL", "ministral-3b-latest"),
+  mistral_review_model: System.get_env("MISTRAL_REVIEW_MODEL", "mistral-large-latest"),
   whisper_url: System.get_env("WHISPER_URL", "http://localhost:8000"),
   telegram_bot_token: System.get_env("TELEGRAM_BOT_TOKEN"),
   telegram_secret_token: System.get_env("TELEGRAM_SECRET_TOKEN"),
@@ -13,8 +15,9 @@ config :crm_reactor,
       do: "dev-admin-token",
       else: System.get_env("ADMIN_TOKEN", "dev-admin-token")
     ),
-  ollama_url: System.get_env("OLLAMA_URL", "http://host.docker.internal:11434"),
+  ollama_url: System.get_env("OLLAMA_URL", "http://127.0.0.1:11435"),
   ollama_model: System.get_env("OLLAMA_MODEL", "qwen2.5:7b"),
+  embedding_model: System.get_env("OLLAMA_EMBEDDING_MODEL", "mxbai-embed-large"),
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads")
 
 cloak_key =

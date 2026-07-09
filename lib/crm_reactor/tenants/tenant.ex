@@ -10,13 +10,15 @@ defmodule CrmReactor.Tenants.Tenant do
     field :schema_name, :string
     field :admin_email, :string
     field :is_active, :boolean, default: true
+    field :webhook_url, :string
+    field :webhook_secret, :string
 
     timestamps(type: :utc_datetime, updated_at: false)
   end
 
   def changeset(tenant, attrs) do
     tenant
-    |> cast(attrs, [:tenant_id, :company_name, :admin_email])
+    |> cast(attrs, [:tenant_id, :company_name, :admin_email, :webhook_url])
     |> validate_required([:tenant_id, :company_name])
     |> unique_constraint(:tenant_id)
     |> put_schema_name()

@@ -35,7 +35,11 @@ defmodule CrmReactorWeb.CrmControllerTest do
 
     confirm_resp =
       conn
-      |> post("/api/crm/confirm", %{pending_id: resp["pending_id"], decision: "confirm"})
+      |> post("/api/crm/confirm", %{
+        pending_id: resp["pending_id"],
+        decision: "confirm",
+        user_id: user_id
+      })
       |> json_response(200)
 
     assert confirm_resp["output"] =~ "supprimé"
@@ -49,17 +53,22 @@ defmodule CrmReactorWeb.CrmControllerTest do
 
     confirm_resp =
       conn
-      |> post("/api/crm/confirm", %{pending_id: resp["pending_id"], decision: "reject"})
+      |> post("/api/crm/confirm", %{
+        pending_id: resp["pending_id"],
+        decision: "reject",
+        user_id: user_id
+      })
       |> json_response(200)
 
     assert confirm_resp["output"] =~ "annulée"
   end
 
-  test "POST /api/crm/confirm - not found returns 404", %{conn: conn} do
+  test "POST /api/crm/confirm - not found returns 404", %{conn: conn, user_id: user_id} do
     conn
     |> post("/api/crm/confirm", %{
       pending_id: Ecto.UUID.generate(),
-      decision: "confirm"
+      decision: "confirm",
+      user_id: user_id
     })
     |> json_response(404)
   end
@@ -76,7 +85,8 @@ defmodule CrmReactorWeb.CrmControllerTest do
       conn
       |> post("/api/crm/confirm", %{
         pending_id: resp["pending_id"],
-        decision: "gibberish"
+        decision: "gibberish",
+        user_id: user_id
       })
       |> json_response(400)
 
@@ -97,7 +107,8 @@ defmodule CrmReactorWeb.CrmControllerTest do
       conn
       |> post("/api/crm/confirm", %{
         pending_id: resp["pending_id"],
-        decision: "notanemail"
+        decision: "notanemail",
+        user_id: user_id
       })
       |> json_response(400)
 
