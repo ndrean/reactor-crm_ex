@@ -27,4 +27,5 @@ crm_reactor-*.tar
 
 # Environment secrets
 .env
+priv/uploads
 
