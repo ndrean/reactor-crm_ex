@@ -35,3 +35,4 @@ crm_reactor-*.tar
 .env
 priv/uploads
 
+reactor-crm_ex.zip
