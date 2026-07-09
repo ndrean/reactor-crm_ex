@@ -30,6 +30,7 @@ crm_reactor-*.tar
 .expert/
 .hexdocs_mcp/
 
+
 # Environment secrets
 .env
 priv/uploads
