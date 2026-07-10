@@ -1,6 +1,6 @@
 # CRM Reactor
 
-A multi-tenant AI assisted workflow runner with OTP execution garantees.
+A multi-tenant AI-assisted workflow runner with OTP execution guarantees.
 
 Uses **Reactor** for workflow orchestration, **Oban** for durable job processing.
 **Phoenix** is used as the HTTP/webhook gateway, and Telegram for mobile devices.
@@ -34,8 +34,11 @@ graph TB
     DE -->|admin_email set| EM[DataExportEmail via Swoosh]
     PT[PendingTimeoutWorker] -->|auto-reject expired| M
     RW[RetentionWorker] -->|anonymize logs >180d| DB[(Postgres)]
+    FCW[FileCleanupWorker] -->|delete expired files >180d| DB
     RSW[RoutingSignalWorker] -->|fire-and-forget analytics| DB
     TCW[ThresholdCalibrationWorker] -->|weekly cron| DB
+    ERW[ExampleReviewWorker] -->|daily: LLM-judge + embed| DB
+    WH[WebhookWorker] -->|POST result to tenant URL| EXT[External System]
 ```
 
 ### MasterIngest Reactor DAG
@@ -122,7 +125,7 @@ graph TB
     Q[User Query] --> E[Embedder: mxbai-embed-large]
     E --> CS[Cosine similarity vs registry_examples]
     CS --> H["top-2 cosine hints: [(workflow, score)]"]
-    H --> P1["Pass 1 — ministral-3b-latest T=0<br/>{workflow, confidence}"]
+    H --> P1["Pass 1 — mistral-small T=0<br/>{workflow, confidence}"]
     P1 -->|"confidence ≥ threshold"| SC[Scoped registry: workflow only]
     P1 -->|"confidence < threshold"| FR[Full registry]
     SC --> P2["Pass 2 — mistral-small<br/>{action, params, routing_path}"]
@@ -167,7 +170,7 @@ graph LR
     O -->|failure| E[Error — Oban retries]
 ```
 
-Pass 1 (workflow selection) uses `ministral-3b-latest` at temperature 0 — fast and cheap, no fallback chain. If it fails, the system skips directly to single-pass classification.
+Pass 1 (workflow selection) uses `mistral-small-latest` at temperature 0 — accurate on the small Pass 1 prompt, negligible cost increase over ministral-3b. No fallback chain. If it fails, the system skips directly to single-pass classification.
 
 Two distinct fallback reasons for Pass 2, handled separately:
 
@@ -176,7 +179,7 @@ Two distinct fallback reasons for Pass 2, handled separately:
 | Mistral Small returns `workflow: "none"` | Mistral Large | **Quality escalation** — Small couldn't classify the intent |
 | Mistral Small (or Large) API error | Ollama | **Reliability fallback** — API unreachable, use local model |
 
-Ollama runs on the Mac host (Metal GPU) in development, accessed from Docker via `host.docker.internal:11434`. On the prod VPS it runs in a container without GPU.
+Ollama runs on the Mac host (Metal GPU) in development, accessed via `127.0.0.1:11435`. On the prod VPS it runs in a container without GPU.
 
 ### Semantic routing hints (registry-level)
 
@@ -204,10 +207,12 @@ graph TB
     subgraph customer_acme
         C1[contacts] --- E1[execution_logs]
         T1[todos] --- E1
+        E1 --- EA1[execution_attachments]
     end
     subgraph customer_bigcorp
         C2[contacts] --- E2[execution_logs]
         T2[todos] --- E2
+        E2 --- EA2[execution_attachments]
     end
     UM -->|user_id maps to| T
     T -->|schema_name| customer_acme
@@ -216,7 +221,7 @@ graph TB
 
 Each tenant gets an isolated Postgres schema (`customer_<tenant_id>`) with its own `contacts`, `todos`, and `execution_logs` tables. The `global_registry` schema holds shared data: `tenants`, `user_mappings`, `module_registry`, `tenant_workflow_overrides`, `registry_examples`, `routing_thresholds`, and `routing_signals`.
 
-`tenants` stores an optional `admin_email` for business-data export notifications. `user_mappings` stores an optional `user_email` for GDPR personal-data export delivery.
+`tenants` stores an optional `admin_email` for business-data export notifications, plus optional `webhook_url` and `webhook_secret` for outbound integrations. `user_mappings` stores an optional `user_email` for GDPR personal-data export delivery.
 
 ### Per-tenant workflow access control
 
@@ -276,6 +281,38 @@ Mutations (update, delete) return a `pending_id`. The user must confirm or rejec
 
 Unconfirmed mutations can be auto-rejected by the `PendingTimeoutWorker`.
 
+### Webhook output
+
+After every completed workflow (action not in `pending`, `clarify`, `unauthorized`), the system can optionally POST the result to the tenant's configured webhook URL. This turns the runner into an integration layer between natural language and enterprise systems (ERP, CRM, HRIS).
+
+```bash
+# Configure a webhook for a tenant
+curl -X PUT http://localhost:4000/api/admin/webhook \
+  -H "Authorization: bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"acme","webhook_url":"https://your-system.com/webhook"}'
+
+# Retrieve the HMAC secret (generated on first webhook setup)
+curl http://localhost:4000/api/admin/webhook_secret?tenant_id=acme \
+  -H "Authorization: bearer $ADMIN_TOKEN"
+```
+
+Payloads are signed with HMAC-SHA256 (`x-crm-signature: sha256=...`). The `WebhookWorker` retries up to 5 times with Oban exponential backoff.
+
+### Conversation context
+
+Text-only requests inject the last 3 exchanges (5-minute TTL) into the Pass 2 prompt for pronoun and reference resolution. For example, after "cherche Marie Dupont", a follow-up "supprime-la" correctly resolves "la" to Marie Dupont.
+
+The `ConversationCache` is an ETS table (no GenServer) keyed by `user_id`. Entries are pruned on read/write by TTL and max pair count. File uploads are self-contained and bypass conversation context.
+
+### Automated example growth
+
+The `ExampleReviewWorker` runs daily (5:30 AM) and uses `mistral-large-latest` as an LLM judge to review routing mismatches from the last 24 hours. When Pass 1 and Pass 2 disagree on the workflow, the judge evaluates whether the signal represents a valid new example. Confirmed examples are embedded via Ollama and inserted into `registry_examples`, growing the cosine-routing bank automatically. Capped at 20 new examples per run.
+
+### File cleanup
+
+The `FileCleanupWorker` runs daily (3:30 AM, after `RetentionWorker`) and deletes stored files linked to `execution_logs` older than 180 days. It removes both the physical files from storage and the `execution_attachment` DB records.
+
 ## Running
 
 ### Prerequisites
@@ -283,7 +320,7 @@ Unconfirmed mutations can be auto-rejected by the `PendingTimeoutWorker`.
 - Docker and Docker Compose
 - Elixir 1.20+ / OTP 29 (for local development and tests)
 - A Mistral API key
-- (Optional) Ollama running on the host with `qwen2.5:7b` (LLM fallback), `mxbai-embed-large` (embeddings), and `ministral-3b-latest` (Pass 1 workflow routing)
+- (Optional) Ollama running on the host with `qwen2.5:7b` (LLM fallback) and `mxbai-embed-large` (embeddings)
 
 ### Start the stack
 
@@ -402,6 +439,9 @@ MISTRAL_API_KEY=... mix test --only external test/crm_reactor/nl2sql_test.exs
 | `test/crm_reactor/ai/examples_cache_test.exs` | ETS cache load/reload for routing examples | No |
 | `test/crm_reactor/ai/threshold_cache_test.exs` | ETS cache load/reload for confidence thresholds | No |
 | `test/crm_reactor/ai/similarity_test.exs` | Cosine similarity: top_workflow and top_n_workflows | No |
+| `test/crm_reactor/workers/file_cleanup_worker_test.exs` | File retention: delete expired, preserve recent | No |
+| `test/crm_reactor/workers/example_review_worker_test.exs` | LLM-judge review: approve/reject, HTTP errors, malformed JSON | No |
+| `test/crm_reactor/reactors/modules/mutations_isolation_test.exs` | Cross-tenant mutation isolation | No |
 | `test/mix/tasks/crm_embed_examples_test.exs` | Example seeding idempotency and --force flag | No |
 | `test/crm_reactor/ai/classifier_test.exs` | Real Mistral classification accuracy + classify_workflow/3 | Yes |
 | `test/crm_reactor/e2e_test.exs` | Full pipeline with real Mistral (mirrors bash smoke tests) | Yes |
@@ -420,7 +460,7 @@ mix dialyzer          # first run builds PLT (~2 min)
 
 | Failure | Behavior |
 |---------|----------|
-| Pass 1 (ministral-3b) fails / times out | Falls back to single-pass with top cosine hint. Logged as warning. |
+| Pass 1 (mistral-small) fails / times out | Falls back to single-pass with top cosine hint. Logged as warning. |
 | Embedder unavailable | Cosine hints = `[]`. Pass 1 runs without hints. |
 | Mistral Small returns `workflow: "none"` | Escalates to Mistral Large. If Large also fails, falls back to Ollama. |
 | Mistral API down / 5xx / timeout | Auto-fallback to Ollama (host GPU). Logged as warning. |
@@ -535,17 +575,19 @@ Pre-provisioned at `localhost:3000` (admin/admin):
 lib/
   crm_reactor/
     ai/
-      classifier.ex          # Mistral intent classification: Pass 1 (ministral-3b) + Pass 2 (mistral-small) + Ollama fallback
-      classifier_behaviour.ex # Behaviour: classify/2, classify/3, classify_with_file/4, classify_workflow/3
+      classifier.ex          # Mistral intent classification: Pass 1 (mistral-small) + Pass 2 (mistral-small→large→Ollama)
+      classifier_behaviour.ex # Behaviour: classify/2, classify/3, classify/4, classify_with_file/4, classify_workflow/3
+      conversation_cache.ex  # ETS table: last 3 exchanges per user (5-min TTL, pronoun resolution)
       embedder.ex            # Text → 1024-dim vector via Ollama mxbai-embed-large
       embedder_behaviour.ex  # Behaviour for test mocking
-      example_seeder.ex      # Upserts seed corpus + embeds via Ollama (used by mix task and Release)
+      example_seeder.ex      # Upserts seed corpus from priv/ai/seed_corpus.json + embeds via Ollama
       examples_cache.ex      # ETS cache for registry_examples (Pass 1 cosine hints)
       input_guard.ex         # Prompt injection detection
-      prompts.ex             # Prompt builder: master prompt, vision prompt, pass1 prompt
+      model_pricing.ex       # Compile-time pricing config from priv/ai/model_pricing.json
+      prompts.ex             # Prompt builder: master prompt, vision prompt, pass1 prompt (with context injection)
       query_builder.ex       # NL2SQL: structured filters -> Ecto queries
       registry_cache.ex      # ETS cache for global module registry
-      routing_signal.ex      # Schema: per-request routing analytics
+      routing_signal.ex      # Schema: per-request routing analytics (+ reviewed field)
       routing_threshold.ex   # Schema: per-workflow confidence thresholds
       similarity.ex          # Nx cosine similarity: top_workflow/2 and top_n_workflows/3
       subscription_cache.ex  # ETS cache for per-tenant workflow overrides
@@ -562,6 +604,7 @@ lib/
       contact.ex             # Ecto schema (per-tenant)
       todo.ex                # Ecto schema (per-tenant)
       execution_log.ex       # Audit trail (per-tenant)
+      execution_attachment.ex # File attachment records (per-tenant, FK → execution_logs)
     reactors/
       master_ingest.ex       # Main Reactor pipeline (DAG)
       steps/                 # Reactor step implementations
@@ -569,27 +612,35 @@ lib/
         contacts.ex          # Contacts CRUD + NL2SQL search
         todos.ex             # Todos CRUD + NL2SQL list
         data_export.ex       # Usage/cost report (email delivery when admin_email set)
+        help.ex              # Dynamic help from registry
         mutations.ex         # 2-step confirm/reject
     tenants/
-      provisioner.ex              # Schema creation, teardown
-      tenant.ex                   # Global registry schema
+      provisioner.ex              # Schema creation, teardown, set_webhook/2
+      tenant.ex                   # Global registry schema (+ webhook_url, webhook_secret)
+      tenant_cache.ex             # ETS cache for tenant webhook config
       user_mapping.ex             # User -> tenant mapping
       module_registry.ex          # Available workflow modules (+ hint_embedding)
       registry_example.ex         # Workflow example phrases for Pass 1 cosine routing
       tenant_workflow_override.ex # Per-tenant workflow access overrides
     telegram.ex              # Send messages + inline keyboards
     telegram/handler.ex      # Telegex webhook handler
+    storage.ex               # Storage behaviour (5MB guard)
+    storage/
+      local.ex               # Filesystem impl: priv/uploads/{tenant}/{uuid}-{filename}
     workers/
-      ingest_worker.ex              # Oban: async Reactor execution
-      pending_timeout_worker.ex     # Oban: auto-reject expired mutations
-      retention_worker.ex           # Oban cron: anonymize old logs (GDPR)
-      routing_signal_worker.ex      # Oban: persist routing analytics (fire-and-forget)
-      threshold_calibration_worker.ex  # Oban cron (weekly): recalibrate confidence thresholds
+      example_review_worker.ex        # Oban cron (daily 5:30AM): LLM-judge review of routing mismatches
+      file_cleanup_worker.ex          # Oban cron (daily 3:30AM): delete expired stored files
+      ingest_worker.ex                # Oban: async Reactor execution
+      pending_timeout_worker.ex       # Oban: auto-reject expired mutations
+      retention_worker.ex             # Oban cron (daily 3AM): anonymize old logs (GDPR)
+      routing_signal_worker.ex        # Oban: persist routing analytics (fire-and-forget)
+      threshold_calibration_worker.ex # Oban cron (weekly Sun 4AM): recalibrate confidence thresholds
+      webhook_worker.ex               # Oban: POST result to tenant webhook (HMAC-signed, 5 retries)
     encrypted.ex             # Cloak encrypted + HMAC types
     vault.ex                 # Cloak AES-GCM vault
     prom_ex.ex               # PromEx metrics configuration
   mix/tasks/
-    crm.embed_examples.ex  # Seed and embed workflow example phrases via Ollama
+    crm.embed_examples.ex  # Seed from priv/ai/seed_corpus.json + embed via Ollama
     crm.embed_registry.ex  # Populate hint_embedding in module_registry via Ollama
     prom_ex/ai_plugin.ex     # Custom AI metrics plugin
   release.ex               # Release tasks: migrate, embed_examples
@@ -597,10 +648,16 @@ lib/
     router.ex                # API routes + /metrics
     controllers/
       crm_controller.ex      # POST /api/crm, /api/crm/confirm
-      admin_controller.ex    # POST /api/admin/provision, /toggle; PUT /api/admin/subscriptions
+      admin_controller.ex    # POST /api/admin/provision, /toggle; PUT /api/admin/subscriptions, /webhook
       webhook_controller.ex  # POST /webhook/telegram
       health_controller.ex   # GET /api/health
       metrics_controller.ex  # GET /metrics
+    live/
+      chat_live.ex           # LiveView chat UI with file upload support
+priv/
+  ai/
+    model_pricing.json       # Per-model pricing and role config (compile-time)
+    seed_corpus.json         # 43 French example phrases across 4 workflows
 ```
 
 ## Adding a new workflow
@@ -669,12 +726,12 @@ VALUES
 
 **4. Add example phrases to `registry_examples`**
 
-Add French-language example phrases for Pass 1 cosine routing to the `@seed_corpus` in `lib/crm_reactor/ai/example_seeder.ex`:
+Add French-language example phrases for Pass 1 cosine routing to `priv/ai/seed_corpus.json`:
 
-```elixir
-{"appointments", "Planifie un rendez-vous avec Marie vendredi"},
-{"appointments", "Ajoute un meeting avec Jean-Pierre la semaine prochaine"},
-{"appointments", "Annule mon rendez-vous de lundi"},
+```json
+{"workflow": "appointments", "text": "Planifie un rendez-vous avec Marie vendredi"},
+{"workflow": "appointments", "text": "Ajoute un meeting avec Jean-Pierre la semaine prochaine"},
+{"workflow": "appointments", "text": "Annule mon rendez-vous de lundi"}
 ```
 
 Then run:
@@ -702,7 +759,7 @@ Add an Ecto migration that creates the new tables inside each tenant schema (usi
 | New module file with `execute/1` clauses | `lib/crm_reactor/reactors/modules/` | Yes |
 | One line in `@module_map` | `dispatch_module.ex` | Yes |
 | DB rows in `module_registry` | SQL / migration | Yes |
-| Example phrases in `@seed_corpus` + `mix crm.embed_examples` | `example_seeder.ex` | Yes (for Pass 1 routing) |
+| Example phrases in `priv/ai/seed_corpus.json` + `mix crm.embed_examples` | JSON + Mix task | Yes (for Pass 1 routing) |
 | Registry embeddings: `mix crm.embed_registry` | Mix task | Yes (for fallback routing hint) |
 | Schema migration for new tables | `priv/repo/migrations/` | If new tables needed |
 | Gate per tenant via `PUT /api/admin/subscriptions` | Admin API | If subscription-gated |
@@ -731,7 +788,7 @@ New workflows are enabled for all tenants by default. No `tenant_workflow_overri
 | 20 | Data portability via email | `POST /api/admin/subjects/:id/email-export` -- sends personal data as JSON email attachment | Done |
 | 17 | Right to erasure | `DELETE /api/admin/subjects/:id` -- redacts logs, removes mapping | Done |
 | 17 | Contact erasure | `DELETE /api/admin/contacts/:schema/:id` -- deletes contact, redacts matching logs | Done |
-| 25 | Data minimization | `RetentionWorker` anonymizes execution_logs older than 180 days (Oban cron, 3am daily) | Done |
+| 25 | Data minimization | `RetentionWorker` anonymizes execution_logs older than 180 days (Oban cron, 3am daily). `FileCleanupWorker` deletes stored files older than 180 days (3:30am daily). | Done |
 | 32 | Encryption at rest | `email` and `phone` encrypted via Cloak AES-GCM, searchable via HMAC hashes | Done |
 | 32 | Rate limiting | Hammer, 30 req/min per user on CRM and webhook endpoints | Done |
 
@@ -774,6 +831,10 @@ Note: `routing_signals.raw_input` stores user messages. If you implement a right
 | 10 | Voice consent flow -- bot asks before transcribing | Medium |
 | 12 | CRM endpoint authentication -- currently relies on user_id lookup only | Medium |
 
+### Model pricing
+
+LLM cost tracking is driven by `priv/ai/model_pricing.json` (loaded at compile time via `CrmReactor.AI.ModelPricing`). Each model entry specifies pricing per million tokens and a role (`primary`, `escalation`, `pass1`, `vision`, `review`, `fallback`). The `DataExport` module uses this config to estimate monthly costs in usage reports.
+
 ## Compared to the n8n version
 
 | | n8n | CRM Reactor |
@@ -782,6 +843,6 @@ Note: `routing_signals.raw_input` stores user messages. If you implement a right
 | Memory | ~1.8 GB | ~1.0 GB |
 | Workflow engine | n8n visual workflows | Reactor (parallel step DAG) |
 | Job queue | Redis | Oban (Postgres-backed) |
-| Tests | Bash curl script (22 tests) | ExUnit (301+ tests: mocked + external) |
+| Tests | Bash curl script (22 tests) | ExUnit (341+ tests: mocked + external) |
 | Observability | Prometheus + custom Grafana | PromEx (auto-generated dashboards) |
 | Fault tolerance | Docker restart | OTP supervision + Oban retries |
