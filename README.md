@@ -5,6 +5,25 @@ A multi-tenant AI-assisted workflow runner with OTP execution guarantees.
 Uses **Reactor** for workflow orchestration, **Oban** for durable job processing.
 **Phoenix** is used as the HTTP/webhook gateway, and Telegram for mobile devices.
 
+## Design philosophy
+
+Small cloud LLMs, structured outputs, no generated SQL. The LLM picks from a known action set — it never writes free-form code or queries.
+
+- **Constrained classification** — a lightweight model routes user input to predefined workflows and actions. Hallucinations are structurally impossible: the LLM can only select from the registry, not invent capabilities.
+- **Two-pass hierarchical routing** — Pass 1 identifies the workflow (cheap, small prompt), Pass 2 extracts the action and parameters (scoped prompt, fewer tokens). Each pass uses the smallest model that gets the job done.
+- **Self-improving cosine pre-filtering** — user input is embedded and compared against a bank of example phrases. The top cosine matches hint the LLM as a soft signal. When the cosine hint and the LLM disagree, a stronger model reviews the mismatch and, if confirmed, adds the input to the example bank — making future routing more accurate without manual curation.
+
+```mermaid
+flowchart LR
+    I[User input] --> CS
+    EX[(Example bank)] --> CS[Cosine hints]
+    CS --> P1[Pass 1: workflow]
+    P1 --> P2[Pass 2: action + params]
+    P2 --> RS[(Routing signals)]
+    RS -->|"daily: mismatches"| LJ[LLM-judge review]
+    LJ -->|"confirmed → embed"| EX
+```
+
 ## Architecture
 
 #### Ingestion pipeline
