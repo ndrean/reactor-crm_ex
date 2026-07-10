@@ -7,9 +7,12 @@ Uses **Reactor** for workflow orchestration, **Oban** for durable job processing
 
 ## Architecture
 
+#### Ingestion pipeline
+
 ```mermaid
 graph TB
     A[HTTP POST /api/crm] -->|sync| R[Reactor MasterIngest]
+    LV[LiveView Chat] -->|sync| R
     T[Telegram Webhook] -->|async| O[Oban IngestWorker]
     O -->|3 retries| R
 
@@ -21,8 +24,13 @@ graph TB
     CI --> DM[DispatchModule]
     LE --> DM
     DM --> FR[FinalizeReply]
+```
 
-    DM -->|contacts| C[Contacts Router]
+#### Workflow modules
+
+```mermaid
+graph TB
+    DM[DispatchModule] -->|contacts| C[Contacts Router]
     DM -->|todos| TD[Todos Router]
     DM -->|data| DE[DataExport]
     DM -->|help| H[Help Module]
@@ -30,15 +38,22 @@ graph TB
 
     C -->|mutation| M[2-step Confirm/Reject]
     TD -->|mutation| M
-
     DE -->|admin_email set| EM[DataExportEmail via Swoosh]
-    PT[PendingTimeoutWorker] -->|auto-reject expired| M
-    RW[RetentionWorker] -->|anonymize logs >180d| DB[(Postgres)]
-    FCW[FileCleanupWorker] -->|delete expired files >180d| DB
+
+    FR -->|webhook_url set| WH[WebhookWorker]
+    WH -->|HMAC-signed POST| EXT[External System]
+```
+
+#### Background workers
+
+```mermaid
+graph TB
+    PT[PendingTimeoutWorker] -->|auto-reject expired| M[Mutations]
+    RW[RetentionWorker] -->|"daily 3AM: anonymize logs >180d"| DB[(Postgres)]
+    FCW[FileCleanupWorker] -->|"daily 3:30AM: delete expired files"| DB
     RSW[RoutingSignalWorker] -->|fire-and-forget analytics| DB
-    TCW[ThresholdCalibrationWorker] -->|weekly cron| DB
-    ERW[ExampleReviewWorker] -->|daily: LLM-judge + embed| DB
-    WH[WebhookWorker] -->|POST result to tenant URL| EXT[External System]
+    TCW[ThresholdCalibrationWorker] -->|"weekly Sun 4AM: recalibrate"| DB
+    ERW[ExampleReviewWorker] -->|"daily 5:30AM: LLM-judge + embed"| DB
 ```
 
 ### MasterIngest Reactor DAG
