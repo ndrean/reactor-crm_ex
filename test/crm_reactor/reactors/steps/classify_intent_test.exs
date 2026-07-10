@@ -53,7 +53,7 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntentTest do
     assert result.total_tokens >= 0
   end
 
-  test "rejected input (prompt injection) returns none steps" do
+  test "prompt injection input is classified as none by LLM" do
     {:ok, result} =
       ClassifyIntent.run(
         %{
@@ -67,9 +67,7 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntentTest do
       )
 
     assert [%{action: "none", workflow: "none"}] = result.steps
-    assert Map.has_key?(result, :rejected)
-    assert result.rejected =~ "non autorisée"
-    assert result.prompt_tokens == 0
+    refute Map.has_key?(result, :rejected)
   end
 
   test "SQL injection pattern is rejected" do

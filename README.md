@@ -482,6 +482,25 @@ MISTRAL_API_KEY=... mix test --only external test/crm_reactor/nl2sql_test.exs
 | `test/crm_reactor/e2e_test.exs` | Full pipeline with real Mistral (mirrors bash smoke tests) | Yes |
 | `test/crm_reactor/nl2sql_test.exs` | NL2SQL: multi-result, company filter, date-relative | Yes |
 
+### Penetration testing
+
+A curl-based pentest script at `/tmp/pentest_nlex.sh` covers 30+ checks across 9 categories: prompt injection, auth bypass, tenant isolation, input validation, rate limiting, confirm endpoint abuse, admin endpoint injection, header/method abuse, and information disclosure. It requires the app to be running and a provisioned tenant.
+
+To run it with [Strix](https://github.com/usestrix/strix) (AI-powered pen-testing agent) instead:
+
+```bash
+# Install Strix (requires Docker Desktop — not OrbStack)
+curl -sSL https://strix.ai/install | bash
+
+# Run against the local app
+export LLM_API_KEY="your-anthropic-or-openai-key"
+export STRIX_LLM="anthropic/claude-sonnet-4-20250514"
+strix --target http://host.docker.internal:4000 \
+      --instruction-file /tmp/strix-instructions.md -n
+```
+
+Strix runs its AI agents inside a Docker sandbox, so it needs Docker Desktop specifically (OrbStack's socket is not compatible). The instruction file at `/tmp/strix-instructions.md` guides the agents toward the key attack surfaces: CRM and admin API endpoints, auth mechanisms, and tenant isolation boundaries. Results can be used as evidence for SOC2/ISO27001 audit documentation.
+
 ### Static analysis
 
 ```bash

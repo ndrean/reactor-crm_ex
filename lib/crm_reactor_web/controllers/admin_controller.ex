@@ -24,6 +24,11 @@ defmodule CrmReactorWeb.AdminController do
           schema_name: tenant.schema_name
         })
 
+      {:error, :invalid_tenant_id} ->
+        conn
+        |> put_status(400)
+        |> json(%{error: "Invalid tenant_id: must be lowercase alphanumeric with underscores"})
+
       {:error, changeset} ->
         conn |> put_status(422) |> json(%{error: format_errors(changeset)})
     end

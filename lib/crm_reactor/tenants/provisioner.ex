@@ -6,6 +6,14 @@ defmodule CrmReactor.Tenants.Provisioner do
   alias CrmReactor.Tenants.{Tenant, TenantCache, UserMapping}
 
   def provision(tenant_id, company_name, user_identifier \\ nil, opts \\ []) do
+    unless Regex.match?(~r/^[a-z0-9_]+$/, tenant_id) do
+      {:error, :invalid_tenant_id}
+    else
+      do_provision(tenant_id, company_name, user_identifier, opts)
+    end
+  end
+
+  defp do_provision(tenant_id, company_name, user_identifier, opts) do
     schema_name = "customer_#{tenant_id}"
     admin_email = Keyword.get(opts, :admin_email)
     user_email = Keyword.get(opts, :user_email)
