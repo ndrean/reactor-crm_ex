@@ -1,13 +1,14 @@
-# CRM Reactor
+# NLEx Router
 
-A multi-tenant AI-assisted workflow runner with OTP execution guarantees.
+A multi-tenant Natural Language Execution Router: an AI-assisted workflow runner to execute Elixir modules with OTP execution guarantees.
 
 Uses **Reactor** for workflow orchestration, **Oban** for durable job processing.
 **Phoenix** is used as the HTTP/webhook gateway, and Telegram for mobile devices.
 
+
 ## Design philosophy
 
-Small cloud LLMs, structured outputs, no generated SQL. The LLM picks from a known action set — it never writes free-form code or queries.
+Small cloud LLMs, structured outputs, no generated SQL: the LLM picks from a known action set — it never writes free-form code or queries.
 
 - **Constrained classification** — a lightweight model routes user input to predefined workflows and actions. Hallucinations are structurally impossible: the LLM can only select from the registry, not invent capabilities.
 - **Two-pass hierarchical routing** — Pass 1 identifies the workflow (cheap, small prompt), Pass 2 extracts the action and parameters (scoped prompt, fewer tokens). Each pass uses the smallest model that gets the job done.
