@@ -99,8 +99,15 @@ defmodule CrmReactor.Reactors.Modules.Todos do
   def execute(%{action: "complete"} = ctx) do
     case find_todos(ctx) do
       [todo] ->
-        todo |> Ecto.Changeset.change(done: true) |> Repo.update!(prefix: ctx.tenant_schema)
-        {:ok, %{output: "Tâche complétée : #{todo.subject}", action: "complete"}}
+        case todo
+             |> Ecto.Changeset.change(done: true)
+             |> Repo.update(prefix: ctx.tenant_schema) do
+          {:ok, _} ->
+            {:ok, %{output: "Tâche complétée : #{todo.subject}", action: "complete"}}
+
+          {:error, _changeset} ->
+            {:ok, %{output: "Erreur lors de la complétion de la tâche.", action: "complete"}}
+        end
 
       [] ->
         {:ok,

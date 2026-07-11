@@ -484,22 +484,31 @@ MISTRAL_API_KEY=... mix test --only external test/crm_reactor/nl2sql_test.exs
 
 ### Penetration testing
 
-A curl-based pentest script at `/tmp/pentest_nlex.sh` covers 30+ checks across 9 categories: prompt injection, auth bypass, tenant isolation, input validation, rate limiting, confirm endpoint abuse, admin endpoint injection, header/method abuse, and information disclosure. It requires the app to be running and a provisioned tenant.
+Two independent approaches. Both require the app running with a provisioned tenant.
 
-To run it with [Strix](https://github.com/usestrix/strix) (AI-powered pen-testing agent) instead:
+**1. Manual script** — `priv/strix/pentest.sh` runs 33 deterministic curl checks across 9 categories (prompt injection, auth bypass, tenant isolation, input validation, rate limiting, confirm endpoint, admin injection, header abuse, information disclosure). Fast, reproducible, no external dependencies:
 
 ```bash
-# Install Strix (requires Docker Desktop — not OrbStack)
+source .env && bash priv/strix/pentest.sh
+```
+
+**2. AI-powered testing** with [Strix](https://github.com/usestrix/strix) — an autonomous pen-testing agent. Unlike static scanners that replay fixed payload databases, Strix uses an LLM to read the instruction file (`priv/strix/instructions.md`) describing the app's architecture, endpoints, and risk areas, then generates targeted exploits contextually (e.g. French prompt injection for a French CRM, schema name injection for multi-tenant Postgres). It runs each attack inside a Docker sandbox and iterates based on responses.
+
+```bash
+# Install (requires Docker Desktop — OrbStack not compatible)
 curl -sSL https://strix.ai/install | bash
 
-# Run against the local app
+# Terminal 1: run the app in Docker
+docker compose up -d
+
+# Terminal 2: run Strix against the containerized app
 export LLM_API_KEY="your-anthropic-or-openai-key"
 export STRIX_LLM="anthropic/claude-sonnet-4-20250514"
 strix --target http://host.docker.internal:4000 \
-      --instruction-file /tmp/strix-instructions.md -n
+      --instruction-file priv/strix/instructions.md -n
 ```
 
-Strix runs its AI agents inside a Docker sandbox, so it needs Docker Desktop specifically (OrbStack's socket is not compatible). The instruction file at `/tmp/strix-instructions.md` guides the agents toward the key attack surfaces: CRM and admin API endpoints, auth mechanisms, and tenant isolation boundaries. Results can be used as evidence for SOC2/ISO27001 audit documentation.
+The instruction file describes the tech stack, common vulnerability patterns for this architecture, and all API endpoints with their payloads. This context lets Strix's LLM agents focus on high-value attack vectors rather than generic probing. Results from either approach can be used as evidence for SOC2/ISO27001 audit documentation.
 
 ### Static analysis
 

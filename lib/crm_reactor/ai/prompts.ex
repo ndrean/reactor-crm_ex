@@ -99,21 +99,34 @@ defmodule CrmReactor.AI.Prompts do
       registry_entries
       |> Enum.group_by(& &1.workflow_name)
       |> Enum.map_join("\n", fn {workflow, entries} ->
-        action_names = entries |> Enum.map(& &1.action) |> Enum.uniq() |> Enum.join(", ")
-        "- #{workflow}: #{action_names}"
+        actions_with_hints =
+          entries
+          |> Enum.uniq_by(& &1.action)
+          |> Enum.map_join(", ", fn e ->
+            if e.prompt_hint, do: "#{e.action} (#{e.prompt_hint})", else: e.action
+          end)
+
+        "- #{workflow}: #{actions_with_hints}"
       end)
 
     hints_section =
       case cosine_hints do
         [] ->
-          "Aucune indication sémantique disponible."
+          "Aucune indication disponible."
 
         hints ->
-          hints
-          |> Enum.with_index(1)
-          |> Enum.map_join("\n", fn {{workflow, score}, rank} ->
-            "#{rank}. #{workflow} (score: #{Float.round(score, 3)})"
-          end)
+          ranked =
+            hints
+            |> Enum.with_index(1)
+            |> Enum.map_join("\n", fn {{workflow, score}, rank} ->
+              "#{rank}. #{workflow} (score: #{Float.round(score, 3)})"
+            end)
+
+          """
+          Ces scores proviennent d'une banque d'exemples validés par similarité sémantique.
+          Un score > 0.85 est un signal fort — ne choisis "none" que si le message est clairement hors-sujet.
+          #{ranked}
+          """
       end
 
     """
@@ -124,8 +137,8 @@ defmodule CrmReactor.AI.Prompts do
     </role>
 
     <output_format>
-    {"workflow": "nom_workflow", "confidence": 0.0-1.0}
-    Si aucun workflow ne correspond: {"workflow": "none", "confidence": 1.0}
+    {"workflow": "nom_workflow", "confidence": 0.0-1.0, "reason": "une phrase courte"}
+    Si aucun workflow ne correspond: {"workflow": "none", "confidence": 0.5, "reason": "..."}
     </output_format>
 
     <workflows>

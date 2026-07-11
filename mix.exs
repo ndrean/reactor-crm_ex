@@ -72,7 +72,7 @@ defmodule CrmReactor.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:tidewave, "~> 0.6", only: [:dev]},
-      {:ecto_erd, "~> 0.6", only: :dev},
+      {:ecto_erd, "~> 0.7", only: :dev},
       {:mox, "~> 1.0", only: :test},
       {:excoveralls, "~> 0.18", only: :test},
       {:lazy_html, ">= 0.1.0", only: :test},

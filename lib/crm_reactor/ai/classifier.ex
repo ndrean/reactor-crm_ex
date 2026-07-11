@@ -43,9 +43,11 @@ defmodule CrmReactor.AI.Classifier do
     usage = body["usage"]
 
     case Jason.decode(choice["message"]["content"]) do
-      {:ok, %{"workflow" => w, "confidence" => c}} when is_binary(w) and is_number(c) ->
+      {:ok, %{"workflow" => w, "confidence" => c} = resp} when is_binary(w) and is_number(c) ->
         # LLM sometimes returns "contacts: list" instead of "contacts" — strip action part
         workflow = w |> String.split(~r/[:\s]/, parts: 2) |> List.first()
+        reason = resp["reason"]
+        if reason, do: Logger.debug("Pass 1 reason: #{reason}")
 
         pass1_usage = %{
           prompt_tokens: usage["prompt_tokens"] || 0,
@@ -109,7 +111,7 @@ defmodule CrmReactor.AI.Classifier do
 
   @impl true
   def classify(text, registry_entries, routing_hint, context) do
-    system_prompt = Prompts.build_master_prompt(registry_entries, routing_hint, context)
+    system_prompt = Prompts.build_master_prompt(registry_entries, routing_hint, context) |> dbg()
     start_time = Telemetry.classify_start()
 
     model_small = Application.get_env(:crm_reactor, :mistral_model_small, "mistral-small-latest")

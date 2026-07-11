@@ -51,8 +51,12 @@ defmodule CrmReactor.Workers.ExampleReviewWorker do
 
   defp review_and_learn(signals) do
     verdicts = judge_mismatches(signals)
-    added = insert_confirmed_examples(signals, verdicts)
+
+    # Mark reviewed BEFORE inserting examples — if we crash after inserting
+    # but before marking, retry would insert duplicates.
     mark_reviewed(signals)
+
+    added = insert_confirmed_examples(signals, verdicts)
 
     if added > 0 do
       ExamplesCache.reload()

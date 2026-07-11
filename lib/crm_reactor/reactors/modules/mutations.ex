@@ -7,6 +7,8 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
   alias CrmReactor.Tenants.{Tenant, UserMapping}
   import Ecto.Query
 
+  require Logger
+
   @doc """
   Confirms or rejects a pending mutation.
 
@@ -164,48 +166,58 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
          %{module: "contacts", action: "update", proposed_params: params} = log,
          schema
        ) do
-    contact = Repo.get!(Contact, params["contact_id"], prefix: schema)
-
-    updates = Map.drop(params, ["contact_id", "search_name", "name"])
-
-    contact |> Contact.changeset(updates) |> Repo.update!(prefix: schema)
-    complete_log(log, schema, "Contact modifié avec succès.")
+    Repo.transaction(fn ->
+      contact = Repo.get!(Contact, params["contact_id"], prefix: schema)
+      updates = Map.drop(params, ["contact_id", "search_name", "name"])
+      contact |> Contact.changeset(updates) |> Repo.update!(prefix: schema)
+      finalize_log!(log, schema, "Contact modifié avec succès.")
+    end)
+    |> unwrap_transaction(log)
   end
 
   defp execute_mutation(
          %{module: "contacts", action: "delete", proposed_params: params} = log,
          schema
        ) do
-    Repo.get!(Contact, params["contact_id"], prefix: schema) |> Repo.delete!(prefix: schema)
-    complete_log(log, schema, "Contact supprimé.")
+    Repo.transaction(fn ->
+      Repo.get!(Contact, params["contact_id"], prefix: schema) |> Repo.delete!(prefix: schema)
+      finalize_log!(log, schema, "Contact supprimé.")
+    end)
+    |> unwrap_transaction(log)
   end
 
   defp execute_mutation(
          %{module: "todos", action: "update", proposed_params: params} = log,
          schema
        ) do
-    todo = Repo.get!(Todo, params["todo_id"], prefix: schema)
+    Repo.transaction(fn ->
+      todo = Repo.get!(Todo, params["todo_id"], prefix: schema)
 
-    updates =
-      params
-      |> Map.drop(["todo_id", "subject"])
-      |> then(fn m ->
-        case Map.pop(m, "new_subject") do
-          {nil, m} -> m
-          {val, m} -> Map.put(m, "subject", val)
-        end
-      end)
+      updates =
+        params
+        |> Map.drop(["todo_id", "subject"])
+        |> then(fn m ->
+          case Map.pop(m, "new_subject") do
+            {nil, m} -> m
+            {val, m} -> Map.put(m, "subject", val)
+          end
+        end)
 
-    todo |> Todo.changeset(updates) |> Repo.update!(prefix: schema)
-    complete_log(log, schema, "Tâche modifiée avec succès.")
+      todo |> Todo.changeset(updates) |> Repo.update!(prefix: schema)
+      finalize_log!(log, schema, "Tâche modifiée avec succès.")
+    end)
+    |> unwrap_transaction(log)
   end
 
   defp execute_mutation(
          %{module: "todos", action: "delete", proposed_params: params} = log,
          schema
        ) do
-    Repo.get!(Todo, params["todo_id"], prefix: schema) |> Repo.delete!(prefix: schema)
-    complete_log(log, schema, "Tâche supprimée.")
+    Repo.transaction(fn ->
+      Repo.get!(Todo, params["todo_id"], prefix: schema) |> Repo.delete!(prefix: schema)
+      finalize_log!(log, schema, "Tâche supprimée.")
+    end)
+    |> unwrap_transaction(log)
   end
 
   defp execute_mutation(log, schema) do
@@ -221,12 +233,29 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
     {:ok, %{output: "Action annulée.", action: "rejected"}}
   end
 
+  # Used inside Repo.transaction — raises on failure to trigger rollback.
+  defp finalize_log!(log, schema, output) do
+    Repo.get!(ExecutionLog, log.id, prefix: schema)
+    |> ExecutionLog.complete_changeset(%{output: output, action: log.action, module: log.module})
+    |> Repo.update!(prefix: schema)
+
+    %{output: output, action: log.action}
+  end
+
+  # Used outside transactions (reject, provide_export_email, fanout, unsupported action).
   defp complete_log(log, schema, output) do
     Repo.get!(ExecutionLog, log.id, prefix: schema)
     |> ExecutionLog.complete_changeset(%{output: output, action: log.action, module: log.module})
     |> Repo.update!(prefix: schema)
 
     {:ok, %{output: output, action: log.action}}
+  end
+
+  defp unwrap_transaction({:ok, result}, _log), do: {:ok, result}
+
+  defp unwrap_transaction({:error, reason}, log) do
+    Logger.warning("Mutation failed for log #{log.id}: #{inspect(reason)}")
+    {:ok, %{output: "Erreur lors de l'opération. Veuillez réessayer.", action: log.action}}
   end
 
   defp workflow_modules do
