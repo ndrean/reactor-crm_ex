@@ -5,7 +5,8 @@ defmodule CrmReactor.Repo.Migrations.InitialSchema do
     # Oban job queue tables
     Oban.Migrations.up()
 
-    # Global registry schema
+    # ── Global registry schema ─────────────────────────────────────────────
+
     execute "CREATE SCHEMA IF NOT EXISTS global_registry"
 
     create table(:tenants, prefix: "global_registry") do
@@ -14,6 +15,8 @@ defmodule CrmReactor.Repo.Migrations.InitialSchema do
       add :schema_name, :string, null: false
       add :is_active, :boolean, default: true
       add :admin_email, :string
+      add :webhook_url, :text
+      add :webhook_secret, :text
 
       timestamps(type: :utc_datetime, updated_at: false)
     end
@@ -38,6 +41,15 @@ defmodule CrmReactor.Repo.Migrations.InitialSchema do
     end
 
     create unique_index(:module_registry, [:workflow_name, :action], prefix: "global_registry")
+
+    execute """
+    CREATE TABLE global_registry.tenant_workflow_overrides (
+      tenant_id     TEXT    NOT NULL,
+      workflow_name TEXT    NOT NULL,
+      enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+      PRIMARY KEY (tenant_id, workflow_name)
+    )
+    """
   end
 
   def down do

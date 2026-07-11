@@ -5,7 +5,6 @@ A multi-tenant Natural Language Execution Router: an AI-assisted workflow runner
 Uses **Reactor** for workflow orchestration, **Oban** for durable job processing.
 **Phoenix** is used as the HTTP/webhook gateway, and Telegram for mobile devices.
 
-
 ## Design philosophy
 
 Small cloud LLMs, structured outputs, no generated SQL: the LLM picks from a known action set — it never writes free-form code or queries.
@@ -297,6 +296,193 @@ The `ConversationCache` is an ETS table (no GenServer) keyed by `user_id`. Entri
 ### File cleanup
 
 The `FileCleanupWorker` runs daily (3:30 AM, after `RetentionWorker`) and deletes stored files linked to `execution_logs` older than 180 days. It removes both the physical files from storage and the `execution_attachment` DB records.
+
+## Adding a new workflow
+
+The system is designed so that adding a new domain requires minimal code changes. The example below uses the `todos` workflow as a reference — it has all the patterns (CRUD, NL2SQL, 2-step confirmation, date handling).
+
+### The 6-point contract
+
+#### 1. Registry migration (Pass 1 + Pass 2 prompt data)
+
+Create a migration that inserts rows into `global_registry.module_registry`. Each row declares one action and tells the LLM:
+- **what it can do** (`action`)
+- **what to extract** (`params_schema`)
+- **when to pick this workflow** (`prompt_hint` — short French description)
+
+See `priv/repo/migrations/20260704000003_add_workflow_todos.exs`:
+
+```elixir
+execute """
+INSERT INTO global_registry.module_registry (workflow_name, action, params_schema, prompt_hint, active) VALUES
+  ('todos', 'list',     '{"optional":["due_before","due_after","due_on","contact_name"]}',
+   'liste les tâches ; filtre par contact_name, due_before/due_after/due_on pour les dates', true),
+  ('todos', 'create',   '{"required":["subject"],"optional":["due_date","contact_name"]}',
+   'crée une tâche ; contact_name pour la lier à un contact', true),
+  ('todos', 'complete', '{"required":["subject"],"optional":["contact_name"]}',
+   'termine/complète une tâche ; contact_name pour lever une ambiguïté', true),
+  ('todos', 'update',   '{"required":["subject"],"optional":["new_subject","due_date","start_date","contact_name"]}',
+   'modifie une tâche ; contact_name pour lever une ambiguïté', true),
+  ('todos', 'delete',   '{"required":["subject"],"optional":["contact_name"]}',
+   'supprime une tâche ; contact_name pour lever une ambiguïté', true)
+"""
+```
+
+**How this flows into the prompts:**
+
+- **Pass 1** (`build_pass1_prompt/2`) — the LLM sees: `- todos: list (liste les tâches...), create (crée une tâche...), ...`
+- **Pass 2** (`build_master_prompt/3`) — the LLM sees the full `params_schema` for each action:
+  ```
+  - todos:
+      * list [params — optional: due_before, due_after, due_on, contact_name] (liste les tâches...)
+      * create [params — required: subject; optional: due_date, contact_name] (crée une tâche...)
+  ```
+- **Help** — `Modules.Help` reads `prompt_hint` at runtime and renders it. No code needed.
+
+#### 2. Module file (`execute/1` interface)
+
+Create `lib/crm_reactor/reactors/modules/todos.ex`. The `WorkflowInterpreter` calls `module.execute(context)` with this map:
+
+```elixir
+%{
+  action: "create",                    # from LLM classification
+  params: %{"subject" => "Rappel", "due_date" => "2026-07-12"},  # extracted by LLM
+  routing_path: "deterministic",       # or "nl2sql"
+  raw_text: "crée un rappel pour demain",  # original user message (for NL2SQL)
+  tenant_schema: "customer_acme",      # Postgres schema prefix
+  company_name: "Acme Corp",
+  admin_email: "admin@acme.com",
+  channel: "telegram",                 # "http" | "telegram" | "live"
+  user_id: "7363939976",
+  log_id: 42                           # execution_log ID (for pending mutations)
+}
+```
+
+**Must return one of:**
+
+```elixir
+# Simple result
+{:ok, %{output: "Tâche créée : Rappel", action: "create"}}
+
+# With data (enables $ref chaining between steps)
+{:ok, %{output: "...", action: "create", data: %{"todo_id" => 123, "subject" => "Rappel"}}}
+
+# Pending (2-step confirmation for destructive actions)
+{:ok, %{output: "Supprimer cette tâche ?", action: "pending", pending_id: "uuid"}}
+```
+
+Pattern-match on `action` in function heads:
+
+```elixir
+defmodule CrmReactor.Reactors.Modules.Todos do
+  def execute(%{action: "create"} = ctx) do
+    # Insert into DB using ctx.params and ctx.tenant_schema
+  end
+
+  def execute(%{action: "list", routing_path: "nl2sql"} = ctx) do
+    # Use QueryBuilder.build_query(Todo, ctx.raw_text)
+  end
+
+  def execute(%{action: "list"} = ctx) do
+    # Deterministic Ecto query from ctx.params
+  end
+
+  def execute(%{action: "delete"} = ctx) do
+    # Find todo, store as pending, return pending_id
+  end
+
+  def execute(%{action: action}) do
+    {:ok, %{output: "Action non supportée : #{action}", action: action}}
+  end
+end
+```
+
+#### 3. Config registration
+
+One line in `config/config.exs`:
+
+```elixir
+config :crm_reactor,
+  workflow_modules: %{
+    "contacts" => CrmReactor.Reactors.Modules.Contacts,
+    "todos"    => CrmReactor.Reactors.Modules.Todos,       # ← add here
+    "data"     => CrmReactor.Reactors.Modules.DataExport,
+    "help"     => CrmReactor.Reactors.Modules.Help
+  }
+```
+
+This is the **only hardcoded mapping** — it connects workflow names (strings from the LLM) to Elixir modules at compile time.
+
+#### 4. Tenant schema migration (if new tables needed)
+
+If your workflow needs its own database table, add a migration. The table lives inside each tenant's schema (created by `Provisioner`). See how `todos` is created in `lib/crm_reactor/tenants/provisioner.ex`:
+
+```sql
+CREATE TABLE IF NOT EXISTS #{schema_name}.todos (
+  id bigserial PRIMARY KEY,
+  subject text NOT NULL,
+  due_date date,
+  start_date date,
+  done boolean DEFAULT false,
+  contact_id bigint REFERENCES #{schema_name}.contacts(id),
+  inserted_at timestamptz NOT NULL DEFAULT now()
+)
+```
+
+For existing tenants, add a migration that iterates over all `schema_name` values and creates the table in each.
+
+#### 5. Subscription gating (optional)
+
+Works automatically. `DispatchModule` checks `SubscriptionCache.enabled?(tenant_id, workflow_name)` before routing. By default all workflows are enabled. To restrict:
+
+```bash
+curl -X PUT http://localhost:4000/api/admin/subscriptions \
+  -H "Authorization: bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"acme","workflow_name":"todos","enabled":false}'
+```
+
+No code change needed — the LLM won't even see disabled workflows in its prompt (RegistryCache filters them).
+
+#### 6. Mock classifier (for tests)
+
+Add a pattern to `test/support/mock_classifier.ex` so your tests work without API calls:
+
+```elixir
+defp patterns do
+  [
+    ...
+    {~r/crée.*tâche|ajoute.*tâche/, "todos", "create",
+     fn _ -> %{"subject" => "Nouvelle tâche", "due_date" => "2026-07-12"} end},
+    {~r/liste.*tâche|mes tâches/, "todos", "list", fn _ -> %{} end},
+    {~r/termine|complète/, "todos", "complete",
+     fn text -> %{"subject" => extract_after(text, ~r/termine|complète/)} end},
+    ...
+  ]
+end
+```
+
+### Summary
+
+| # | What | Where | Required? |
+|---|------|-------|-----------|
+| 1 | Registry rows (workflow + actions + params + hints) | `priv/repo/migrations/` | Yes |
+| 2 | Module file with `execute/1` clauses | `lib/crm_reactor/reactors/modules/` | Yes |
+| 3 | One line in `:workflow_modules` config | `config/config.exs` | Yes |
+| 4 | Tenant schema table | `provisioner.ex` + migration | If new tables |
+| 5 | Subscription gating | Admin API call | If restricted |
+| 6 | Mock classifier pattern | `test/support/mock_classifier.ex` | For tests |
+
+### What is fully dynamic (zero code changes)
+
+Once the 3 required steps are done:
+
+- **Pass 1 routing** — the LLM sees `prompt_hint` and routes to your workflow
+- **Pass 2 param extraction** — the LLM reads `params_schema` and extracts fields
+- **Help** — your actions appear automatically in the help response
+- **Subscription gating** — works out of the box via admin API
+- **Conversation context** — pronoun resolution applies to all workflows
+- **Webhook output** — fires for any completed workflow action
 
 ## Running
 
@@ -642,86 +828,6 @@ priv/
   ai/
     model_pricing.json       # Per-model pricing and role config (compile-time)
 ```
-
-## Adding a new workflow
-
-The system is designed so that adding a new domain (e.g. `appointments`, `invoices`) requires minimal code changes. Most of the system is driven by the `global_registry.module_registry` table.
-
-### What is fully dynamic (DB-driven, zero code changes)
-
-- **System prompt** — `RegistryCache.all()` loads at boot. Adding rows to the table and calling `RegistryCache.reload()` is immediately reflected in what the LLM is told it can do.
-- **Param extraction** — `params_schema` per action (required/optional fields) is rendered into the prompt. The LLM learns what to extract from the schema alone.
-- **Date resolution, routing_path** — driven by the global prompt instructions, not per-workflow code.
-- **Help response** — `Modules.Help` reads the registry at runtime; new workflows appear automatically.
-
-### What requires code changes
-
-**1. A new module file**
-
-Create `lib/crm_reactor/reactors/modules/appointments.ex` implementing `execute/1` pattern-matched on each action:
-
-```elixir
-defmodule CrmReactor.Reactors.Modules.Appointments do
-  def execute(%{action: "create", params: params, tenant_schema: schema}) do
-    # ...
-  end
-
-  def execute(%{action: "list", params: params, tenant_schema: schema}) do
-    # ...
-  end
-
-  def execute(%{action: action}) do
-    {:ok, %{output: "Action non supportée : #{action}", action: action}}
-  end
-end
-```
-
-**2. One line in `@module_map`** — `lib/crm_reactor/reactors/steps/dispatch_module.ex`:
-
-```elixir
-@module_map %{
-  "contacts"     => Modules.Contacts,
-  "todos"        => Modules.Todos,
-  "data"         => Modules.DataExport,
-  "help"         => Modules.Help,
-  "appointments" => Modules.Appointments   # ← add this
-}
-```
-
-This is the **only hardcoded piece** — intentionally so. It maps workflow names to Elixir modules at compile time, giving full pattern-match safety.
-
-**3. DB rows in `global_registry.module_registry`**
-
-```sql
-INSERT INTO global_registry.module_registry
-  (workflow_name, action, params_schema, prompt_hint)
-VALUES
-  ('appointments', 'create',
-   '{"required":["subject","date"],"optional":["contact_name","duration_min"]}',
-   'crée, planifie un rendez-vous'),
-  ('appointments', 'list',
-   '{"optional":["due_before","contact_name"]}',
-   'liste, affiche les rendez-vous'),
-  ('appointments', 'delete',
-   '{"required":["subject"],"optional":["date"]}',
-   'supprime, annule un rendez-vous');
-```
-
-**4. A migration for the tenant schema** (if you need new tables)
-
-Add an Ecto migration that creates the new tables inside each tenant schema (using `prefix: schema_name` in Repo calls, same pattern as `contacts` and `todos`).
-
-### Summary
-
-| Step | Location | Required? |
-|------|----------|-----------|
-| New module file with `execute/1` clauses | `lib/crm_reactor/reactors/modules/` | Yes |
-| One line in `@module_map` | `dispatch_module.ex` | Yes |
-| DB rows in `module_registry` | SQL / migration | Yes |
-| Schema migration for new tables | `priv/repo/migrations/` | If new tables needed |
-| Gate per tenant via `PUT /api/admin/subscriptions` | Admin API | If subscription-gated |
-
-New workflows are enabled for all tenants by default. No `tenant_workflow_overrides` row is needed unless you want to restrict access.
 
 ## GDPR and ISO 42001 compliance
 
