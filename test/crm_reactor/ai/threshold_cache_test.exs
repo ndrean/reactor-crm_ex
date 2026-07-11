@@ -1,5 +1,6 @@
 defmodule CrmReactor.AI.ThresholdCacheTest do
   use CrmReactor.DataCase, async: false
+  @moduletag :cosine
 
   alias CrmReactor.AI.{RoutingThreshold, ThresholdCache}
   alias CrmReactor.Repo

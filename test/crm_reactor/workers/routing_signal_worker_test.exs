@@ -1,5 +1,6 @@
 defmodule CrmReactor.Workers.RoutingSignalWorkerTest do
   use CrmReactor.DataCase, async: false
+  @moduletag :cosine
 
   alias CrmReactor.AI.RoutingSignal
   alias CrmReactor.Repo

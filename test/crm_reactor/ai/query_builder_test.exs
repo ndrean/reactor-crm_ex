@@ -292,52 +292,16 @@ defmodule CrmReactor.AI.QueryBuilderTest do
       assert {:ok, %Ecto.Query{}} = QueryBuilder.build_query(Todo, "tous les todos")
     end
 
-    test "Mistral non-200 falls back to Ollama success", %{bypass: bypass} do
-      ollama_bypass = Bypass.open()
-      Application.put_env(:crm_reactor, :ollama_url, "http://localhost:#{ollama_bypass.port}")
-
+    test "Mistral non-200 returns error (no Ollama fallback)", %{bypass: bypass} do
       Bypass.expect_once(bypass, "POST", "/v1/chat/completions", fn conn ->
         Plug.Conn.send_resp(conn, 500, "error")
       end)
 
-      Bypass.expect_once(ollama_bypass, "POST", "/api/chat", fn conn ->
-        body =
-          Jason.encode!(%{
-            "message" => %{
-              "content" => ~s({"filters":[],"sort_by":null,"sort_dir":"asc"})
-            }
-          })
-
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, body)
-      end)
-
-      assert {:ok, %Ecto.Query{}} = QueryBuilder.build_query(Todo, "fallback Ollama")
+      assert {:error, "Mistral error 500"} = QueryBuilder.build_query(Todo, "erreur Mistral")
     end
 
-    test "Ollama non-200 returns error", %{bypass: bypass} do
-      ollama_bypass = Bypass.open()
-      Application.put_env(:crm_reactor, :ollama_url, "http://localhost:#{ollama_bypass.port}")
-
-      Bypass.expect_once(bypass, "POST", "/v1/chat/completions", fn conn ->
-        Plug.Conn.send_resp(conn, 500, "error")
-      end)
-
-      Bypass.expect_once(ollama_bypass, "POST", "/api/chat", fn conn ->
-        Plug.Conn.send_resp(conn, 503, "unavailable")
-      end)
-
-      assert {:error, "Ollama error 503"} = QueryBuilder.build_query(Todo, "erreur Ollama")
-    end
-
-    test "Mistral connection refused falls back; Ollama connection refused returns error",
-         %{bypass: bypass} do
+    test "Mistral connection refused returns error", %{bypass: bypass} do
       Bypass.down(bypass)
-
-      ollama_bypass = Bypass.open()
-      Application.put_env(:crm_reactor, :ollama_url, "http://localhost:#{ollama_bypass.port}")
-      Bypass.down(ollama_bypass)
 
       assert {:error, _} = QueryBuilder.build_query(Todo, "tout échoue")
     end

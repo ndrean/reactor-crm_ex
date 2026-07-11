@@ -1,5 +1,6 @@
 defmodule Mix.Tasks.Crm.EmbedExamplesTest do
   use CrmReactor.DataCase, async: false
+  @moduletag :cosine
 
   # MockEmbedder returns {:error, :not_configured} for every phrase — suppress the warnings
   @moduletag capture_log: true

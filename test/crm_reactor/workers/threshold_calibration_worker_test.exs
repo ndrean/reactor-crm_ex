@@ -1,5 +1,6 @@
 defmodule CrmReactor.Workers.ThresholdCalibrationWorkerTest do
   use CrmReactor.DataCase, async: false
+  @moduletag :cosine
 
   alias CrmReactor.AI.{RoutingSignal, RoutingThreshold, ThresholdCache}
   alias CrmReactor.Repo

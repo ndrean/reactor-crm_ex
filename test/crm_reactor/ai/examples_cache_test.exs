@@ -1,5 +1,6 @@
 defmodule CrmReactor.AI.ExamplesCacheTest do
   use CrmReactor.DataCase, async: false
+  @moduletag :cosine
 
   alias CrmReactor.AI.ExamplesCache
   alias CrmReactor.Repo

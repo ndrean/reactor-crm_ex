@@ -1,4 +1,5 @@
-ExUnit.start(exclude: [:external])
+# :cosine — tests for the disabled cosine self-learning loop (ExamplesCache, ThresholdCache, etc.)
+ExUnit.start(exclude: [:external, :cosine])
 Ecto.Adapters.SQL.Sandbox.mode(CrmReactor.Repo, :manual)
 
 mistral_ok? =

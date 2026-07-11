@@ -1,5 +1,5 @@
 defmodule CrmReactor.AI.Classifier do
-  @moduledoc "Intent classification via Mistral Small with Ollama fallback."
+  @moduledoc "Intent classification via Mistral Small → Large cascade."
   @behaviour CrmReactor.AI.ClassifierBehaviour
 
   alias CrmReactor.AI.{Prompts, Telemetry}
@@ -111,7 +111,7 @@ defmodule CrmReactor.AI.Classifier do
 
   @impl true
   def classify(text, registry_entries, routing_hint, context) do
-    system_prompt = Prompts.build_master_prompt(registry_entries, routing_hint, context) |> dbg()
+    system_prompt = Prompts.build_master_prompt(registry_entries, routing_hint, context)
     start_time = Telemetry.classify_start()
 
     model_small = Application.get_env(:crm_reactor, :mistral_model_small, "mistral-small-latest")
@@ -122,27 +122,19 @@ defmodule CrmReactor.AI.Classifier do
         Logger.info("#{model_small} returned 'none', escalating to #{model_large}")
         Telemetry.classify_fallback(%{reason: "small_no_match"})
 
-        case classify_mistral(text, system_prompt, model_large) do
-          {:ok, _} = result ->
-            Telemetry.classify_stop(start_time, %{model: model_large, fallback: true})
-            result
-
-          {:error, reason} ->
-            Logger.warning("#{model_large} failed: #{inspect(reason)}, falling back to Ollama")
-            result = classify_ollama(text, system_prompt)
-            Telemetry.classify_stop(start_time, %{model: "ollama", fallback: true})
-            result
-        end
+        result = classify_mistral(text, system_prompt, model_large)
+        Telemetry.classify_stop(start_time, %{model: model_large, fallback: true})
+        result
 
       {:ok, _} = result ->
         Telemetry.classify_stop(start_time, %{model: model_small, fallback: false})
         result
 
       {:error, reason} ->
-        Logger.warning("#{model_small} failed: #{inspect(reason)}, falling back to Ollama")
+        Logger.warning("#{model_small} failed: #{inspect(reason)}, escalating to #{model_large}")
         Telemetry.classify_fallback(%{reason: inspect(reason)})
-        result = classify_ollama(text, system_prompt)
-        Telemetry.classify_stop(start_time, %{model: "ollama", fallback: true})
+        result = classify_mistral(text, system_prompt, model_large)
+        Telemetry.classify_stop(start_time, %{model: model_large, fallback: true})
         result
     end
   end
@@ -171,50 +163,6 @@ defmodule CrmReactor.AI.Classifier do
 
       {:error, reason} ->
         {:error, "Mistral request failed: #{inspect(reason)}"}
-    end
-  end
-
-  defp classify_ollama(text, system_prompt) do
-    ollama_url =
-      Application.get_env(:crm_reactor, :ollama_url, "http://127.0.0.1:11435")
-
-    model = Application.get_env(:crm_reactor, :ollama_model, "qwen2.5:7b")
-
-    case Req.post("#{ollama_url}/api/chat",
-           json: %{
-             model: model,
-             messages: [
-               %{role: "system", content: system_prompt},
-               %{role: "user", content: text}
-             ],
-             format: "json",
-             stream: false
-           },
-           receive_timeout: 30_000
-         ) do
-      {:ok, %{status: 200, body: body}} ->
-        content = body["message"]["content"]
-
-        case Jason.decode(content) do
-          {:ok, parsed} ->
-            {:ok,
-             %{
-               steps: parse_steps(parsed),
-               prompt_tokens: 0,
-               completion_tokens: 0,
-               total_tokens: 0
-             }}
-
-          {:error, reason} ->
-            Logger.warning("Ollama JSON decode error: #{inspect(reason)}")
-            {:error, :ollama_json_decode_error}
-        end
-
-      {:ok, %{status: status, body: body}} ->
-        {:error, "Ollama error #{status}: #{inspect(body)}"}
-
-      {:error, reason} ->
-        {:error, "Ollama request failed: #{inspect(reason)}"}
     end
   end
 

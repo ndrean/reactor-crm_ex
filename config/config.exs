@@ -40,9 +40,10 @@ config :crm_reactor, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"0 3 * * *", CrmReactor.Workers.RetentionWorker},
-       {"30 3 * * *", CrmReactor.Workers.FileCleanupWorker},
-       {"0 4 * * 0", CrmReactor.Workers.ThresholdCalibrationWorker},
-       {"30 5 * * *", CrmReactor.Workers.ExampleReviewWorker}
+       {"30 3 * * *", CrmReactor.Workers.FileCleanupWorker}
+       # Cosine self-learning loop disabled
+       # {"0 4 * * 0", CrmReactor.Workers.ThresholdCalibrationWorker},
+       # {"30 5 * * *", CrmReactor.Workers.ExampleReviewWorker}
      ]}
   ]
 

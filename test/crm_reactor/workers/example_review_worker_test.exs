@@ -1,5 +1,6 @@
 defmodule CrmReactor.Workers.ExampleReviewWorkerTest do
   use CrmReactor.DataCase
+  @moduletag :cosine
 
   alias CrmReactor.AI.RoutingSignal
   alias CrmReactor.Repo

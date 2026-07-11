@@ -112,21 +112,8 @@ defmodule CrmReactor.AI.QueryBuilder do
 
   defp call_llm(system_prompt, user_text) do
     case Application.get_env(:crm_reactor, :nl2sql_adapter) do
-      nil ->
-        case call_mistral(system_prompt, user_text) do
-          {:ok, _} = result ->
-            result
-
-          {:error, reason} ->
-            require Logger
-
-            Logger.warning("NL2SQL Mistral failed: #{inspect(reason)}, falling back to Ollama")
-
-            call_ollama(system_prompt, user_text)
-        end
-
-      adapter ->
-        adapter.(system_prompt, user_text)
+      nil -> call_mistral(system_prompt, user_text)
+      adapter -> adapter.(system_prompt, user_text)
     end
   end
 
@@ -160,38 +147,6 @@ defmodule CrmReactor.AI.QueryBuilder do
 
       {:error, reason} ->
         {:error, reason}
-    end
-  end
-
-  defp call_ollama(system_prompt, user_text) do
-    ollama_url =
-      Application.get_env(:crm_reactor, :ollama_url, "http://host.docker.internal:11434")
-
-    model = Application.get_env(:crm_reactor, :ollama_model, "qwen2.5:7b")
-
-    case Req.post("#{ollama_url}/api/chat",
-           json: %{
-             model: model,
-             messages: [
-               %{role: "system", content: system_prompt},
-               %{role: "user", content: user_text}
-             ],
-             format: "json",
-             stream: false
-           },
-           receive_timeout: 30_000
-         ) do
-      {:ok, %{status: 200, body: body}} ->
-        case Jason.decode(body["message"]["content"]) do
-          {:ok, parsed} -> {:ok, parsed}
-          {:error, _} -> {:error, "invalid JSON from Ollama LLM"}
-        end
-
-      {:ok, %{status: status}} ->
-        {:error, "Ollama error #{status}"}
-
-      {:error, reason} ->
-        {:error, "Ollama failed: #{inspect(reason)}"}
     end
   end
 

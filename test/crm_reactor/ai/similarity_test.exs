@@ -1,5 +1,6 @@
 defmodule CrmReactor.AI.SimilarityTest do
   use ExUnit.Case, async: true
+  @moduletag :cosine
 
   alias CrmReactor.AI.Similarity
 

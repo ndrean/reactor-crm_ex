@@ -13,8 +13,9 @@ defmodule CrmReactor.Application do
       CrmReactor.Tenants.TenantCache,
       CrmReactor.AI.RegistryCache,
       CrmReactor.AI.SubscriptionCache,
-      CrmReactor.AI.ExamplesCache,
-      CrmReactor.AI.ThresholdCache,
+      # Cosine self-learning loop disabled — re-enable with ThresholdCache + ExamplesCache
+      # CrmReactor.AI.ExamplesCache,
+      # CrmReactor.AI.ThresholdCache,
       {DNSCluster, query: Application.get_env(:crm_reactor, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: CrmReactor.PubSub},
       {Oban, Application.fetch_env!(:crm_reactor, Oban)},
@@ -25,7 +26,7 @@ defmodule CrmReactor.Application do
 
     opts = [strategy: :one_for_one, name: CrmReactor.Supervisor]
     result = Supervisor.start_link(children, opts)
-    CrmReactor.AI.Similarity.warmup()
+    # CrmReactor.AI.Similarity.warmup()
     result
   end
 
