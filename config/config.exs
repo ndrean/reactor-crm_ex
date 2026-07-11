@@ -10,6 +10,7 @@ config :crm_reactor,
   workflow_modules: %{
     "contacts" => CrmReactor.Reactors.Modules.Contacts,
     "todos" => CrmReactor.Reactors.Modules.Todos,
+    "appointments" => CrmReactor.Reactors.Modules.Appointments,
     "data" => CrmReactor.Reactors.Modules.DataExport,
     "help" => CrmReactor.Reactors.Modules.Help
   }
@@ -41,9 +42,6 @@ config :crm_reactor, Oban,
      crontab: [
        {"0 3 * * *", CrmReactor.Workers.RetentionWorker},
        {"30 3 * * *", CrmReactor.Workers.FileCleanupWorker}
-       # Cosine self-learning loop disabled
-       # {"0 4 * * 0", CrmReactor.Workers.ThresholdCalibrationWorker},
-       # {"30 5 * * *", CrmReactor.Workers.ExampleReviewWorker}
      ]}
   ]
 
@@ -56,7 +54,5 @@ config :crm_reactor, CrmReactor.PromEx,
   drop_metrics_groups: [],
   grafana: :disabled,
   metrics_server: :disabled
-
-config :nx, :default_backend, EXLA.Backend
 
 import_config "#{config_env()}.exs"

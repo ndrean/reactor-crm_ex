@@ -17,7 +17,7 @@ NLEx is a multi-tenant CRM workflow runner. Users send natural language (French)
 
 ## Common Risks for This Architecture
 
-- **Prompt injection**: the "text" field is passed to an LLM. The app uses a system prompt defense and cosine example bank, but no regex filtering for prompt injection. Try to make the LLM return actions it shouldn't (e.g. data export for unauthorized workflows).
+- **Prompt injection**: the "text" field is passed to an LLM. The app uses a system prompt defense but no regex filtering for prompt injection. Try to make the LLM return actions it shouldn't (e.g. data export for unauthorized workflows).
 - **Tenant isolation bypass**: user_id → tenant lookup. Can a crafted user_id reach another tenant's schema?
 - **SQL injection in admin inputs**: tenant_id is used to construct Postgres schema names (`customer_<tenant_id>`). The app validates format but test edge cases.
 - **NL2SQL path**: complex queries go through an LLM that generates filter descriptors (not raw SQL), but the descriptors are applied to Ecto queries. Test if malformed filters can leak data.

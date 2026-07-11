@@ -125,6 +125,11 @@ defmodule CrmReactor.Tenants.Provisioner do
       done BOOLEAN DEFAULT FALSE,
       start_date DATE,
       contact_id BIGINT REFERENCES #{name}.contacts(id) ON DELETE SET NULL,
+      starts_at TIMESTAMPTZ,
+      ends_at TIMESTAMPTZ,
+      location TEXT,
+      reminder_minutes INTEGER DEFAULT 30,
+      reminder_job_id BIGINT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
     """)

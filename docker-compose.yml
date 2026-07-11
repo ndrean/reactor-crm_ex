@@ -20,32 +20,6 @@ services:
         limits:
           memory: 512M
 
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   restart: unless-stopped
-  #   volumes:
-  #     - ollama_models:/root/.ollama
-  #   ports:
-  #     - "127.0.0.1:11435:11434"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "ollama list | grep -q mxbai-embed-large"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     start_period: 120s
-  #     retries: 12
-  #   entrypoint: ["/bin/sh", "-c"]
-  #   command:
-  #     - |
-  #       ollama serve &
-  #       until ollama list >/dev/null 2>&1; do sleep 1; done
-  #       ollama pull mxbai-embed-large:latest
-  #       wait
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 6G
-  #         cpus: "2.0"
-
   # app:
   #   build: .
   #   restart: unless-stopped
@@ -130,4 +104,3 @@ volumes:
   pgdata:
   promdata:
   grafanadata:
-  # ollama_models:

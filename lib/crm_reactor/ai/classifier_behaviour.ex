@@ -26,6 +26,6 @@ defmodule CrmReactor.AI.ClassifierBehaviour do
   @callback classify_workflow(
               text :: String.t(),
               registry :: list(),
-              hints :: [{String.t(), float()}]
+              hints :: list()
             ) :: {:ok, {String.t(), float(), map()}} | {:error, term()}
 end

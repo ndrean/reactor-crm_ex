@@ -21,32 +21,11 @@
       "output_per_million": 0.90,
       "currency": "USD"
     },
-    "mistral-large-latest": {
-      "provider": "mistral",
-      "role": "example_review_judge",
-      "input_per_million": 0.50,
-      "output_per_million": 1.50,
-      "currency": "USD"
-    },
     "ministral-3b-2512": {
       "provider": "mistral",
       "role": "vision_attachment",
       "input_per_million": 0.10,
       "output_per_million": 0.60,
-      "currency": "USD"
-    },
-    "qwen2.5:7b": {
-      "provider": "ollama",
-      "role": "local_fallback",
-      "input_per_million": 0.0,
-      "output_per_million": 0.0,
-      "currency": "USD"
-    },
-    "mxbai-embed-large": {
-      "provider": "ollama",
-      "role": "embedding",
-      "input_per_million": 0.0,
-      "output_per_million": 0.0,
       "currency": "USD"
     }
   }

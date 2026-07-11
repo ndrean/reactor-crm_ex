@@ -34,10 +34,6 @@ config :swoosh, :api_client, false
 
 config :crm_reactor,
   classifier: CrmReactor.AI.MockClassifier,
-  embedder: CrmReactor.MockEmbedder,
   admin_token: "dev-admin-token"
 
 config :crm_reactor, CrmReactor.PromEx, disabled: true
-
-config :nx, :default_backend, Nx.BinaryBackend
-config :nx, :default_options, []

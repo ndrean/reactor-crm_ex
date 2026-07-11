@@ -4,15 +4,11 @@ defmodule CrmReactor.AI.ModelPricingTest do
   alias CrmReactor.AI.ModelPricing
 
   test "all default models have pricing entries" do
-    # These must match the defaults in runtime.exs and classifier.ex
     defaults = [
-      {"ministral-3b-latest", "pass1_routing_legacy"},
-      {"mistral-small-latest", "pass1_and_pass2_classification"},
+      {"ministral-3b-latest", "pass1_routing"},
+      {"mistral-small-latest", "pass2_classification"},
       {"codestral-latest", "pass2_escalation"},
-      {"ministral-3b-2512", "vision_attachment"},
-      {"mistral-large-latest", "example_review_judge"},
-      {"qwen2.5:7b", "local_fallback"},
-      {"mxbai-embed-large", "embedding"}
+      {"ministral-3b-2512", "vision_attachment"}
     ]
 
     for {model, role} <- defaults do
@@ -52,12 +48,5 @@ defmodule CrmReactor.AI.ModelPricingTest do
     {:ok, p1} = ModelPricing.cost("ministral-3b-latest", 200, 20)
     {:ok, p2} = ModelPricing.cost("mistral-small-latest", 1000, 30)
     assert_in_delta total, p1 + p2, 0.000001
-  end
-
-  test "ollama models have zero cost" do
-    assert {:ok, cost1} = ModelPricing.cost("qwen2.5:7b", 10_000, 5_000)
-    assert cost1 == 0.0
-    assert {:ok, cost2} = ModelPricing.cost("mxbai-embed-large", 10_000, 0)
-    assert cost2 == 0.0
   end
 end

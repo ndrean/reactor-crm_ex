@@ -247,8 +247,6 @@ defmodule CrmReactor.AI.QueryBuilderTest do
       prev_adapter = Application.get_env(:crm_reactor, :nl2sql_adapter)
       prev_url = Application.get_env(:crm_reactor, :mistral_api_url)
       prev_key = Application.get_env(:crm_reactor, :mistral_api_key)
-      prev_ollama = Application.get_env(:crm_reactor, :ollama_url)
-
       Application.delete_env(:crm_reactor, :nl2sql_adapter)
 
       bypass = Bypass.open()
@@ -259,8 +257,7 @@ defmodule CrmReactor.AI.QueryBuilderTest do
         for {key, val} <- [
               nl2sql_adapter: prev_adapter,
               mistral_api_url: prev_url,
-              mistral_api_key: prev_key,
-              ollama_url: prev_ollama
+              mistral_api_key: prev_key
             ] do
           if val,
             do: Application.put_env(:crm_reactor, key, val),

@@ -2,7 +2,7 @@ defmodule CrmReactor.AI.InputGuard do
   @moduledoc """
   Input guard. Rejects user input containing SQL injection patterns before
   it reaches the NL2SQL path. Prompt injection defense is handled by the
-  LLM system prompt and the cosine example bank (not regex).
+  LLM system prompt (not regex).
   """
 
   require Logger

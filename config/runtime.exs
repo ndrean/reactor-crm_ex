@@ -15,9 +15,6 @@ config :crm_reactor,
       do: "dev-admin-token",
       else: System.get_env("ADMIN_TOKEN", "dev-admin-token")
     ),
-  # Ollama removed — cosine similarity system disabled, embedder not used
-  # ollama_url: System.get_env("OLLAMA_URL", "http://127.0.0.1:11435"),
-  # embedding_model: System.get_env("OLLAMA_EMBEDDING_MODEL", "mxbai-embed-large"),
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads")
 
 cloak_key =

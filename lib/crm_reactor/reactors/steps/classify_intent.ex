@@ -2,21 +2,11 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
   @moduledoc "Reactor step: validate input, then classify user intent via two-pass LLM."
   use Reactor.Step
 
-  alias CrmReactor.AI.{
-    ConversationCache,
-    # ExamplesCache,
-    InputGuard,
-    RegistryCache
-    # Similarity,
-    # ThresholdCache
-  }
-
+  alias CrmReactor.AI.{ConversationCache, InputGuard, RegistryCache}
   alias CrmReactor.Storage
-  # alias CrmReactor.Workers.RoutingSignalWorker
 
   require Logger
 
-  # Default confidence threshold for Pass 1 scoping (was dynamic via ThresholdCache)
   @default_threshold 0.70
 
   @impl true
@@ -28,7 +18,7 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
     case InputGuard.validate(text) do
       :ok ->
         registry = RegistryCache.for_tenant(tenant.tenant_id)
-        classify(text, attachment, registry, tenant.tenant_id, user_id)
+        classify(text, attachment, registry, user_id)
 
       {:rejected, message} ->
         {:ok,
@@ -45,7 +35,7 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
   end
 
   # File attachment: skip two-pass, go directly to vision classifier
-  defp classify(text, attachment, registry, _tenant_id, _user_id) when not is_nil(attachment) do
+  defp classify(text, attachment, registry, _user_id) when not is_nil(attachment) do
     case Storage.get(attachment.storage_key) do
       {:ok, file_content} ->
         case classifier().classify_with_file(
@@ -72,13 +62,10 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
   end
 
   # Text-only: two-pass orchestration
-  defp classify(text, nil, registry, _tenant_id, user_id) do
-    # Cosine hints disabled — Pass 1 prompt hints are sufficient for routing.
-    # cosine_hints = compute_cosine_hints(text)
-    cosine_hints = []
+  defp classify(text, nil, registry, user_id) do
     context = ConversationCache.get(user_id)
 
-    case classifier().classify_workflow(text, registry, cosine_hints) do
+    case classifier().classify_workflow(text, registry, []) do
       {:ok, {pass1_workflow, pass1_confidence, pass1_usage}} ->
         scoped_registry = scope_registry(pass1_workflow, pass1_confidence, registry)
         routing_hint = if pass1_workflow != "none", do: pass1_workflow, else: nil
@@ -100,9 +87,6 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
                 "total=#{(pass1_usage.total_tokens || 0) + (result[:total_tokens] || 0)}"
             )
 
-            # Routing signal disabled — no cosine-based self-learning loop.
-            # fire_routing_signal(text, cosine_hints, pass1_workflow, pass1_confidence, pass2_workflow, tenant_id)
-
             {:ok, sum_usage(result, pass1_usage)}
 
           {:error, reason} ->
@@ -119,18 +103,7 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
     end
   end
 
-  # Cosine hint computation disabled — kept for future re-enablement.
-  # defp compute_cosine_hints(text) do
-  #   examples = ExamplesCache.all()
-  #
-  #   case embedder().embed(text) do
-  #     {:ok, embedding} -> Similarity.top_n_workflows(embedding, examples, 2)
-  #     {:error, _} -> []
-  #   end
-  # end
-
   defp scope_registry(workflow, confidence, registry) do
-    # Static threshold (was dynamic via ThresholdCache)
     if confidence >= @default_threshold do
       scoped = Enum.filter(registry, &(&1.workflow_name == workflow))
       if scoped == [], do: registry, else: scoped
@@ -138,32 +111,6 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
       registry
     end
   end
-
-  # Routing signal recording disabled — no self-learning loop.
-  # defp fire_routing_signal(text, cosine_hints, pass1_workflow, pass1_confidence, pass2_workflow, tenant_id) do
-  #   {cosine_workflow, cosine_score} = List.first(cosine_hints, {nil, nil})
-  #
-  #   args = %{
-  #     "tenant_id" => tenant_id,
-  #     "raw_input" => text,
-  #     "cosine_workflow" => cosine_workflow,
-  #     "cosine_score" => cosine_score,
-  #     "pass1_workflow" => pass1_workflow,
-  #     "pass1_confidence" => pass1_confidence,
-  #     "pass2_workflow" => pass2_workflow,
-  #     "llm_confirmed" => pass1_workflow == pass2_workflow
-  #   }
-  #
-  #   try do
-  #     args |> RoutingSignalWorker.new() |> Oban.insert()
-  #   rescue
-  #     e -> Logger.debug("Routing signal not recorded: #{inspect(e)}")
-  #   catch
-  #     :exit, _ -> :ok
-  #   end
-  #
-  #   :ok
-  # end
 
   defp sum_usage(result, pass1_usage) do
     %{
@@ -177,8 +124,4 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
   defp classifier do
     Application.get_env(:crm_reactor, :classifier, CrmReactor.AI.Classifier)
   end
-
-  # defp embedder do
-  #   Application.get_env(:crm_reactor, :embedder, CrmReactor.AI.Embedder)
-  # end
 end

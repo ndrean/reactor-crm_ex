@@ -94,7 +94,7 @@ defmodule CrmReactor.AI.Prompts do
     """
   end
 
-  def build_pass1_prompt(registry_entries, cosine_hints) do
+  def build_pass1_prompt(registry_entries, _hints \\ []) do
     workflows_desc =
       registry_entries
       |> Enum.group_by(& &1.workflow_name)
@@ -108,26 +108,6 @@ defmodule CrmReactor.AI.Prompts do
 
         "- #{workflow}: #{actions_with_hints}"
       end)
-
-    hints_section =
-      case cosine_hints do
-        [] ->
-          "Aucune indication disponible."
-
-        hints ->
-          ranked =
-            hints
-            |> Enum.with_index(1)
-            |> Enum.map_join("\n", fn {{workflow, score}, rank} ->
-              "#{rank}. #{workflow} (score: #{Float.round(score, 3)})"
-            end)
-
-          """
-          Ces scores proviennent d'une banque d'exemples validés par similarité sémantique.
-          Un score > 0.85 est un signal fort — ne choisis "none" que si le message est clairement hors-sujet.
-          #{ranked}
-          """
-      end
 
     """
     <role>
@@ -144,10 +124,6 @@ defmodule CrmReactor.AI.Prompts do
     <workflows>
     #{workflows_desc}
     </workflows>
-
-    <cosine_hints>
-    #{hints_section}
-    </cosine_hints>
     """
   end
 

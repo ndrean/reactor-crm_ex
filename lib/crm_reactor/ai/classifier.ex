@@ -7,8 +7,8 @@ defmodule CrmReactor.AI.Classifier do
   require Logger
 
   @impl true
-  def classify_workflow(text, registry_entries, cosine_hints) do
-    system_prompt = Prompts.build_pass1_prompt(registry_entries, cosine_hints)
+  def classify_workflow(text, registry_entries, _hints) do
+    system_prompt = Prompts.build_pass1_prompt(registry_entries)
     model = Application.get_env(:crm_reactor, :mistral_model_small, "mistral-small-latest")
     api_key = Application.fetch_env!(:crm_reactor, :mistral_api_key)
 

@@ -220,6 +220,83 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
     |> unwrap_transaction(log)
   end
 
+  defp execute_mutation(
+         %{module: "appointments", action: "cancel", proposed_params: params} = log,
+         schema
+       ) do
+    Repo.transaction(fn ->
+      todo = Repo.get!(Todo, params["todo_id"], prefix: schema)
+      todo |> Ecto.Changeset.change(done: true) |> Repo.update!(prefix: schema)
+      if todo.reminder_job_id, do: Oban.cancel_job(todo.reminder_job_id)
+      finalize_log!(log, schema, "Rendez-vous annulé : #{todo.subject}")
+    end)
+    |> unwrap_transaction(log)
+  end
+
+  defp execute_mutation(
+         %{module: "appointments", action: "reschedule", proposed_params: params} = log,
+         schema
+       ) do
+    Repo.transaction(fn ->
+      todo = Repo.get!(Todo, params["todo_id"], prefix: schema)
+
+      # Cancel old reminder
+      if params["old_reminder_job_id"], do: Oban.cancel_job(params["old_reminder_job_id"])
+
+      # Parse new datetime
+      new_date = params["new_date"] || params["date"]
+      new_time = params["new_time"] || params["time"]
+
+      time_str =
+        if is_binary(new_time) && String.length(new_time) == 5,
+          do: new_time <> ":00",
+          else: new_time
+
+      with {:ok, date} <- Date.from_iso8601(new_date || ""),
+           {:ok, time} <- Time.from_iso8601(time_str || "") do
+        new_starts_at = DateTime.new!(date, time, "Etc/UTC")
+        reminder_minutes = todo.reminder_minutes || 30
+        new_ends_at = DateTime.add(new_starts_at, 3600, :second)
+
+        # Schedule new reminder
+        scheduled_at = DateTime.add(new_starts_at, -reminder_minutes * 60, :second)
+
+        new_job_id =
+          if DateTime.compare(scheduled_at, DateTime.utc_now()) == :gt do
+            {:ok, job} =
+              %{
+                "todo_id" => todo.id,
+                "tenant_schema" => schema,
+                "channel" => "http",
+                "user_id" => todo.created_by,
+                "subject" => todo.subject
+              }
+              |> CrmReactor.Workers.AppointmentReminderWorker.new(scheduled_at: scheduled_at)
+              |> Oban.insert()
+
+            job.id
+          else
+            nil
+          end
+
+        todo
+        |> Ecto.Changeset.change(
+          starts_at: new_starts_at,
+          ends_at: new_ends_at,
+          reminder_job_id: new_job_id
+        )
+        |> Repo.update!(prefix: schema)
+
+        date_str = Calendar.strftime(new_starts_at, "%d/%m/%Y à %Hh%M")
+        finalize_log!(log, schema, "Rendez-vous reprogrammé au #{date_str}")
+      else
+        _ ->
+          finalize_log!(log, schema, "Erreur : date/heure invalide pour la reprogrammation.")
+      end
+    end)
+    |> unwrap_transaction(log)
+  end
+
   defp execute_mutation(log, schema) do
     complete_log(log, schema, "Action non supportée.")
   end

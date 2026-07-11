@@ -88,6 +88,16 @@ defmodule CrmReactor.AI.MockClassifier do
       {~r/liste.*tâche|affiche.*tâche|mes tâches/, "todos", "list", fn _ -> %{} end},
       {~r/termine|complète/, "todos", "complete",
        fn text -> %{"subject" => extract_after(text, ~r/termine|complète/)} end},
+      {~r/rendez-vous|réunion|rdv|créneau|planifi/i, "appointments", "create",
+       fn _ ->
+         tomorrow = Date.add(Date.utc_today(), 1) |> Date.to_iso8601()
+         %{"subject" => "Réunion test", "date" => tomorrow, "time" => "14:00"}
+       end},
+      {~r/mes rendez-vous|prochains? rdv|agenda/i, "appointments", "list", fn _ -> %{} end},
+      {~r/annule.*rdv|annule.*rendez-vous|annule.*réunion/i, "appointments", "cancel",
+       fn text -> %{"subject" => extract_after(text, ~r/annule/)} end},
+      {~r/déplace|reporte|reprogramme/i, "appointments", "reschedule",
+       fn text -> %{"subject" => extract_after(text, ~r/déplace|reporte|reprogramme/)} end},
       {~r/exporte|rapport/, "data", "dump", fn _ -> %{} end}
     ]
   end

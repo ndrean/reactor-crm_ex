@@ -32,6 +32,15 @@ defmodule CrmReactor.TestFixtures do
       ["Appeler fournisseur", tomorrow, user_id, "Envoyer devis", next_week, user_id]
     )
 
+    # Appointment (todo with starts_at)
+    tomorrow_2pm =
+      DateTime.new!(tomorrow, ~T[14:00:00], "Etc/UTC")
+
+    Repo.query!(
+      "INSERT INTO #{tenant.schema_name}.todos (subject, created_by, starts_at, ends_at, location, reminder_minutes) VALUES ($1, $2, $3, $4, $5, $6)",
+      ["Réunion client", user_id, tomorrow_2pm, DateTime.add(tomorrow_2pm, 3600), "Bureau", 30]
+    )
+
     %{tenant: tenant, user_id: user_id}
   end
 
