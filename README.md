@@ -11,7 +11,7 @@ Small cloud LLMs, structured outputs, no generated SQL: the LLM picks from a kno
 
 - **Constrained classification** — a lightweight model routes user input to predefined workflows and actions. Hallucinations are structurally impossible: the LLM can only select from the registry, not invent capabilities.
 - **Two-pass hierarchical routing** — Pass 1 identifies the workflow (cheap, small prompt), Pass 2 extracts the action and parameters (scoped prompt, fewer tokens). Each pass uses the smallest model that gets the job done.
-- **Prompt-driven routing** — each registry action carries a `prompt_hint` (e.g. "crée, ajoute un contact") that guides the LLM. No embeddings, no example bank — the prompt is explicit enough for reliable routing across 4 workflows.
+- **Prompt-driven routing** — each registry action carries a `prompt_hint` (e.g. "crée, ajoute un contact") that guides the LLM. No embeddings, no example bank — the prompt is explicit enough for reliable routing across 5 workflows.
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,7 @@ flowchart LR
 ```mermaid
 graph TB
     A[HTTP POST /api/crm] -->|sync| R[Reactor MasterIngest]
-    LV[LiveView Chat] -->|sync| R
+    LV[LiveView Chat] -->|"sync + file upload"| R
     T[Telegram Webhook] -->|async| O[Oban IngestWorker]
     O -->|3 retries| R
 
@@ -49,12 +49,15 @@ graph TB
 graph TB
     DM[DispatchModule] -->|contacts| C[Contacts Router]
     DM -->|todos| TD[Todos Router]
+    DM -->|appointments| AP[Appointments Router]
     DM -->|data| DE[DataExport]
     DM -->|help| H[Help Module]
     DM -->|none/unknown| FB[Fallback Message]
 
     C -->|mutation| M[2-step Confirm/Reject]
     TD -->|mutation| M
+    AP -->|cancel/reschedule| M
+    AP -->|create| REM[AppointmentReminderWorker]
     DE -->|admin_email set| EM[DataExportEmail via Swoosh]
 
     FR -->|webhook_url set| WH[WebhookWorker]
@@ -66,6 +69,7 @@ graph TB
 ```mermaid
 graph TB
     PT[PendingTimeoutWorker] -->|auto-reject expired| M[Mutations]
+    ARW[AppointmentReminderWorker] -->|scheduled reminder| TG[Telegram / Webhook]
     RW[RetentionWorker] -->|"daily 3AM: anonymize logs >180d"| DB[(Postgres)]
     FCW[FileCleanupWorker] -->|"daily 3:30AM: delete expired files"| DB
 ```
@@ -91,6 +95,7 @@ flowchart TB
         input_is_audio>"Input is_audio"]
         input_channel>"Input channel"]
         input_job_id>"Input job_id"]
+        input_attachment>"Input attachment"]
         input_user_id -->|user_id|step_tenant
         step_tenant["tenant(ResolveTenant)"]
         input_raw_input -->|raw_input|step_text
@@ -103,7 +108,9 @@ flowchart TB
         input_job_id -->|job_id|step_log
         step_log["log(LogExecution)"]
         step_text -->|text|step_classify
+        input_attachment -->|attachment|step_classify
         step_tenant -->|tenant|step_classify
+        input_user_id -->|user_id|step_classify
         step_classify["classification(ClassifyIntent)"]
         step_classify -->|classification|step_result
         step_tenant -->|tenant|step_result
@@ -116,6 +123,9 @@ flowchart TB
         step_log -->|log|step_finalize
         step_tenant -->|tenant|step_finalize
         step_classify -->|classification|step_finalize
+        input_attachment -->|attachment|step_finalize
+        input_user_id -->|user_id|step_finalize
+        step_text -->|text|step_finalize
         step_finalize["finalize(FinalizeReply)"]
         return_MasterIngest{"Return"}
         step_finalize==>return_MasterIngest
@@ -330,7 +340,7 @@ INSERT INTO global_registry.module_registry (workflow_name, action, params_schem
 
 **How this flows into the prompts:**
 
-- **Pass 1** (`build_pass1_prompt/2`) — the LLM sees: `- todos: list (liste les tâches...), create (crée une tâche...), ...`
+- **Pass 1** (`build_pass1_prompt/1`) — the LLM sees: `- todos: list (liste les tâches...), create (crée une tâche...), ...`
 - **Pass 2** (`build_master_prompt/3`) — the LLM sees the full `params_schema` for each action:
   ```
   - todos:
@@ -404,10 +414,11 @@ One line in `config/config.exs`:
 ```elixir
 config :crm_reactor,
   workflow_modules: %{
-    "contacts" => CrmReactor.Reactors.Modules.Contacts,
-    "todos"    => CrmReactor.Reactors.Modules.Todos,       # ← add here
-    "data"     => CrmReactor.Reactors.Modules.DataExport,
-    "help"     => CrmReactor.Reactors.Modules.Help
+    "contacts"     => CrmReactor.Reactors.Modules.Contacts,
+    "todos"        => CrmReactor.Reactors.Modules.Todos,
+    "appointments" => CrmReactor.Reactors.Modules.Appointments,  # ← add here
+    "data"         => CrmReactor.Reactors.Modules.DataExport,
+    "help"         => CrmReactor.Reactors.Modules.Help
   }
 ```
 
@@ -790,6 +801,7 @@ lib/
       modules/
         contacts.ex          # Contacts CRUD + NL2SQL search
         todos.ex             # Todos CRUD + NL2SQL list
+        appointments.ex      # Appointments CRUD with Oban reminders (extends todos table)
         data_export.ex       # Usage/cost report (email delivery when admin_email set)
         help.ex              # Dynamic help from registry
         mutations.ex         # 2-step confirm/reject (transaction-wrapped)
@@ -806,6 +818,7 @@ lib/
     storage/
       local.ex               # Filesystem impl: priv/uploads/{tenant}/{uuid}-{filename}
     workers/
+      appointment_reminder_worker.ex  # Oban: scheduled appointment reminders (Telegram / webhook)
       file_cleanup_worker.ex          # Oban cron (daily 3:30AM): delete expired stored files
       ingest_worker.ex                # Oban: async Reactor execution
       pending_timeout_worker.ex       # Oban: auto-reject expired mutations
@@ -902,6 +915,6 @@ LLM cost tracking is driven by `priv/ai/model_pricing.json` (loaded at compile t
 | Memory | ~1.8 GB | ~0.5 GB (no Ollama) |
 | Workflow engine | n8n visual workflows | Reactor (parallel step DAG) |
 | Job queue | Redis | Oban (Postgres-backed) |
-| Tests | Bash curl script (22 tests) | ExUnit (297 tests mocked + 72 external/disabled) |
+| Tests | Bash curl script (22 tests) | ExUnit (299 tests mocked + 29 external/disabled) |
 | Observability | Prometheus + custom Grafana | PromEx (auto-generated dashboards) |
 | Fault tolerance | Docker restart | OTP supervision + Oban retries |
