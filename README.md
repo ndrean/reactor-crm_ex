@@ -691,62 +691,139 @@ mix dialyzer          # first run builds PLT (~2 min)
 
 ## Telegram setup
 
-### 1. Create a bot
+### How it works
+
+There is **one bot** representing your app (e.g. `@MyCrmBot`). Every Telegram user who messages this bot triggers a webhook POST to your server. The bot token identifies your bot, not individual users. Users are identified by their `chat_id` — a unique number Telegram assigns to each account.
+
+```mermaid
+sequenceDiagram
+    participant U as User (phone)
+    participant TG as Telegram servers
+    participant NG as Tunnel (ngrok)
+    participant PX as Phoenix app
+
+    Note over U,TG: User messages @MyCrmBot
+    U->>TG: "cherche Marie Dupont"
+    TG->>NG: POST /webhook/telegram<br/>x-telegram-bot-api-secret-token: SECRET
+    NG->>PX: forwards to localhost:4000
+    PX->>PX: Verify secret_token header
+    PX->>PX: Extract chat_id from payload
+    PX->>PX: TenantCache.lookup(chat_id)<br/>→ tenant schema
+    PX->>PX: Enqueue IngestWorker (Oban)
+    PX-->>TG: 200 OK
+    Note over PX: IngestWorker runs MasterIngest
+    PX->>TG: Telegex.send_message(chat_id, result)
+    TG->>U: "Marie Dupont — 06 12 34 56 78"
+```
+
+**Three things must be in place** for a message to reach your app:
+
+1. **Webhook registered** — Telegram knows your URL (via `setWebhook` API call)
+2. **Tunnel running** — your local server is reachable from the internet
+3. **User mapped** — the sender's `chat_id` is linked to a tenant in `global_registry.user_mappings`
+
+### Step 1: Create a bot
 
 1. Message [@BotFather](https://t.me/BotFather) on Telegram
-2. Send `/newbot`, follow the prompts
-3. Copy the bot token
+2. Send `/newbot`, follow the prompts, pick a name
+3. Copy the **bot token** (e.g. `8995638641:AAGLvk...`)
 
-### 2. Configure environment
+This token is your app's identity. All users message this one bot.
+
+### Step 2: Get your chat ID
+
+Message [@GetMyIDBot](https://t.me/GetMyIDBot) (or [@userinfobot](https://t.me/userinfobot)) on Telegram. It replies with your numeric `chat_id` (e.g. `7363939976`).
+
+Each Telegram account has a unique `chat_id`. If you have a second phone with a different Telegram account, it will have a different `chat_id`.
+
+### Step 3: Configure environment
 
 Add to your `.env`:
 
 ```env
-TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
-TELEGRAM_SECRET_TOKEN=a-random-secret-you-choose
+TELEGRAM_BOT_TOKEN=8995638641:AAGLvk...    # from BotFather
+TELEGRAM_SECRET_TOKEN=my-random-secret-123  # you choose this, any string
 ```
 
-### 3. Expose your webhook
-
-The app needs to be reachable from Telegram's servers. For local development, use a tunnel:
+The `TELEGRAM_SECRET_TOKEN` is **not** the bot token. It's a separate secret you invent. Telegram sends it as an HTTP header on every webhook call, and your app verifies it to reject forged requests.
 
 ```bash
-# Using localtunnel
-npx localtunnel --port 4000 --subdomain your-subdomain
+source .env
+mix phx.server
+```
 
-# Or ngrok
+### Step 4: Expose your server
+
+Telegram's servers must reach your Phoenix app. For local development, use a tunnel:
+
+```bash
+# ngrok (recommended — no interstitial page blocking API calls)
 ngrok http 4000
+# → gives you https://abc123.ngrok-free.app
+
+# localtunnel (may show a "click to continue" page that blocks webhooks)
+# npx localtunnel --port 4000 --subdomain my-crm
 ```
 
-### 4. Register the webhook
+> **Warning:** localtunnel's interstitial page blocks Telegram's automated POST requests, causing 408 timeouts. Use ngrok instead.
+
+### Step 5: Register the webhook with Telegram
+
+This is the step that tells Telegram **where to forward messages**. Without it, messages stay on Telegram's servers and never reach your app.
 
 ```bash
-WEBHOOK_URL="https://your-subdomain.loca.lt"  # or your ngrok URL
-BOT_TOKEN="your-bot-token"
-SECRET="your-secret-token"
-
-curl -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
-  -d "url=${WEBHOOK_URL}/webhook/telegram" \
-  -d "secret_token=${SECRET}" \
-  -d 'allowed_updates=["message","callback_query"]'
+curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d "{\"url\": \"https://YOUR-NGROK-URL.ngrok-free.app/webhook/telegram\", \"secret_token\": \"${TELEGRAM_SECRET_TOKEN}\"}"
 ```
 
-### 5. Map your Telegram user to a tenant
+Verify it worked:
 
-Your chat ID is the `telegram_chat_id` you used when provisioning. Find your chat ID by messaging [@userinfobot](https://t.me/userinfobot).
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+# Should show: "url": "https://...", "pending_update_count": 0, no last_error_message
+```
+
+> You must re-run `setWebhook` every time your tunnel URL changes (ngrok gives a new URL on each restart unless you have a paid plan).
+
+### Step 6: Provision a tenant and map your user
+
+Your `chat_id` must be linked to a tenant. Two options:
+
+**Option A: via API** (creates tenant + maps user in one call)
 
 ```bash
 curl -X POST http://localhost:4000/api/admin/provision \
   -H "Authorization: bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"tenant_id":"mycompany","company_name":"My Company","telegram_chat_id":"YOUR_CHAT_ID"}'
+  -d '{"tenant_id":"mycompany","company_name":"My Company","telegram_chat_id":"7363939976"}'
 ```
 
-### 6. Test
+**Option B: via Admin UI** (if tenant already exists)
 
-Send a message to your bot: "cherche Marie" -- you should get a response.
+Go to `/admin/users` → "Telegram User Mappings" → enter the `chat_id` as "User Identifier", select the tenant, click "Add User".
+
+### Step 7: Test
+
+Send a message to your bot on Telegram: "cherche Marie" — you should see the request in your Phoenix logs and get a response in the chat.
 
 For voice messages, ensure the Whisper container is running (`docker compose up -d whisper`).
+
+### Adding more users
+
+Each new Telegram user needs their `chat_id` mapped to a tenant. They get their `chat_id` from `@GetMyIDBot` and send it to you (the admin). You add the mapping via `/admin/users` or the API.
+
+Multiple users can map to the same tenant — they share the same contacts, todos, and execution logs.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| No server logs at all | Webhook not registered or tunnel down | Run `getWebhookInfo`, check `url` field. Restart ngrok if needed. |
+| `last_error_message: "408 Request Timeout"` | Tunnel not forwarding (localtunnel interstitial) | Switch to ngrok |
+| `401` in Phoenix logs | `secret_token` mismatch | The value in `setWebhook` must match `TELEGRAM_SECRET_TOKEN` env var exactly |
+| `403 Unknown user` or no reply | `chat_id` not mapped to a tenant | Add mapping in `/admin/users` |
+| Voice messages fail | Whisper container not running | `docker compose up -d whisper` |
 
 ## Observability
 
@@ -769,7 +846,7 @@ Pre-provisioned at `localhost:3000` (admin/admin):
 
 ## Project structure
 
-```
+```txt
 lib/
   crm_reactor/
     ai/
@@ -906,15 +983,3 @@ priv/
 ### Model pricing
 
 LLM cost tracking is driven by `priv/ai/model_pricing.json` (loaded at compile time via `CrmReactor.AI.ModelPricing`). Each model entry specifies pricing per million tokens and a role (`primary`, `escalation`, `pass1`, `vision`, `review`). The `DataExport` module uses this config to estimate monthly costs in usage reports.
-
-## Compared to the n8n version
-
-| | n8n | CRM Reactor |
-|---|---|---|
-| Runtime | n8n + Redis + 7 containers | Single BEAM app + Postgres + Whisper |
-| Memory | ~1.8 GB | ~0.5 GB (no Ollama) |
-| Workflow engine | n8n visual workflows | Reactor (parallel step DAG) |
-| Job queue | Redis | Oban (Postgres-backed) |
-| Tests | Bash curl script (22 tests) | ExUnit (299 tests mocked + 29 external/disabled) |
-| Observability | Prometheus + custom Grafana | PromEx (auto-generated dashboards) |
-| Fault tolerance | Docker restart | OTP supervision + Oban retries |

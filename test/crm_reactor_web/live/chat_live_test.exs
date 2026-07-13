@@ -4,37 +4,38 @@ defmodule CrmReactorWeb.ChatLiveTest do
   import Phoenix.LiveViewTest
 
   alias CrmReactor.TestFixtures
+  alias CrmReactor.Tenants.TenantCache
 
   @vcf_path "user.vcf"
 
+  defp setup_authenticated_user(conn, fixture) do
+    %{conn: conn, account: account} =
+      register_and_log_in_user(conn, %{
+        tenant_id: fixture.tenant.tenant_id,
+        role: "user"
+      })
+
+    # Add a user mapping for the account's email so the Reactor can resolve it
+    %CrmReactor.Tenants.UserMapping{}
+    |> CrmReactor.Tenants.UserMapping.changeset(%{
+      user_identifier: account.email,
+      tenant_id: fixture.tenant.tenant_id
+    })
+    |> CrmReactor.Repo.insert!()
+
+    TenantCache.reload()
+    %{conn: conn, account: account}
+  end
+
   # ── Initial render ────────────────────────────────────────────────────
 
-  test "mounts and renders the start screen", %{conn: conn} do
-    {:ok, _view, html} = live(conn, "/chat")
-    assert html =~ "CRM Assistant"
-    assert html =~ "Démarrer"
-    assert html =~ "identifiant"
-  end
-
-  # ── Start event ───────────────────────────────────────────────────────
-
-  test "start with empty user_id shows validation error", %{conn: conn} do
-    {:ok, view, _} = live(conn, "/chat")
-    html = view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => ""})
-    assert html =~ "Veuillez entrer"
-  end
-
-  test "start with valid user_id shows the chat interface", %{conn: conn} do
+  test "mounts and renders the chat interface", %{conn: conn} do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
-    {:ok, view, _} = live(conn, "/chat")
-
-    html =
-      view
-      |> element("form[phx-submit='start']")
-      |> render_submit(%{"user_id" => fixture.user_id})
-
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
+    {:ok, _view, html} = live(conn, "/chat")
+    assert html =~ "CRM Assistant"
     assert html =~ "Tapez votre message"
   end
 
@@ -44,8 +45,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     html =
       view |> element("form[phx-submit='send']") |> render_change(%{"input" => "bonjour monde"})
@@ -59,8 +60,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     html_before = render(view)
     view |> element("form[phx-submit='send']") |> render_submit(%{"input" => ""})
@@ -71,23 +72,29 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
-    # Trigger send; the {:run_reactor, ...} message is queued in the LiveView mailbox
     view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "aide"})
-    # render/1 forces the LiveView to process the queued handle_info
     html = render(view)
 
-    # User message should be in the stream
     assert html =~ "aide"
-    # Loading indicator should be gone after reactor completes
     refute html =~ "En cours"
   end
 
   test "send to unknown user shows error message", %{conn: conn} do
+    fixture = TestFixtures.provision_test_tenant()
+    on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
+
+    # Create account but DON'T add user mapping for its email
+    %{conn: conn, account: _account} =
+      register_and_log_in_user(conn, %{
+        tenant_id: fixture.tenant.tenant_id,
+        email: "nomapping@test.com",
+        role: "user"
+      })
+
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => "0000000000"})
 
     view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "aide"})
     html = render(view)
@@ -101,8 +108,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     view
     |> element("form[phx-submit='send']")
@@ -118,8 +125,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     view
     |> element("form[phx-submit='send']")
@@ -136,8 +143,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     view
     |> element("form[phx-submit='send']")
@@ -156,10 +163,9 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
-    # MockClassifier routes "exporte" to data.dump; no admin_email → export_email pending
     view
     |> element("form[phx-submit='send']")
     |> render_submit(%{"input" => "exporte mes données"})
@@ -173,8 +179,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     view
     |> element("form[phx-submit='send']")
@@ -194,8 +200,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     view
     |> element("form[phx-submit='send']")
@@ -215,8 +221,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     view
     |> element("form[phx-submit='send']")
@@ -235,10 +241,11 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
+
     vcf = File.read!(@vcf_path)
 
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     upload =
       file_input(view, "#chat-input-form", :attachment, [
@@ -247,7 +254,6 @@ defmodule CrmReactorWeb.ChatLiveTest do
 
     render_upload(upload, "user.vcf")
 
-    # MockClassifier routes "cherche Marie" to contacts.search regardless of attachment
     view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "cherche Marie"})
     html = render(view)
 
@@ -259,10 +265,11 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
+
     vcf = File.read!(@vcf_path)
 
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     upload =
       file_input(view, "#chat-input-form", :attachment, [
@@ -287,17 +294,17 @@ defmodule CrmReactorWeb.ChatLiveTest do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
-    # Override MockClassifier so the real Mistral API handles the VCF
     Application.put_env(:crm_reactor, :classifier, CrmReactor.AI.Classifier)
 
     on_exit(fn ->
       Application.put_env(:crm_reactor, :classifier, CrmReactor.AI.MockClassifier)
     end)
 
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
+
     vcf = File.read!(@vcf_path)
 
     {:ok, view, _} = live(conn, "/chat")
-    view |> element("form[phx-submit='start']") |> render_submit(%{"user_id" => fixture.user_id})
 
     upload =
       file_input(view, "#chat-input-form", :attachment, [

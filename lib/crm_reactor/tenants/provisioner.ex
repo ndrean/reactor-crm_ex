@@ -20,24 +20,30 @@ defmodule CrmReactor.Tenants.Provisioner do
 
     Repo.transaction(fn ->
       tenant =
-        %Tenant{}
-        |> Tenant.changeset(%{
-          tenant_id: tenant_id,
-          company_name: company_name,
-          admin_email: admin_email
-        })
-        |> Repo.insert!()
+        case %Tenant{}
+             |> Tenant.changeset(%{
+               tenant_id: tenant_id,
+               company_name: company_name,
+               admin_email: admin_email
+             })
+             |> Repo.insert() do
+          {:ok, tenant} -> tenant
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
 
       create_tenant_schema(schema_name)
 
       if user_identifier do
-        %UserMapping{}
-        |> UserMapping.changeset(%{
-          user_identifier: user_identifier,
-          tenant_id: tenant_id,
-          user_email: user_email
-        })
-        |> Repo.insert!()
+        case %UserMapping{}
+             |> UserMapping.changeset(%{
+               user_identifier: user_identifier,
+               tenant_id: tenant_id,
+               user_email: user_email
+             })
+             |> Repo.insert() do
+          {:ok, _mapping} -> :ok
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
       end
 
       tenant
@@ -130,6 +136,22 @@ defmodule CrmReactor.Tenants.Provisioner do
       location TEXT,
       reminder_minutes INTEGER DEFAULT 30,
       reminder_job_id BIGINT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+    """)
+
+    Repo.query!("""
+    CREATE TABLE IF NOT EXISTS #{name}.expenses (
+      id BIGSERIAL PRIMARY KEY,
+      amount DECIMAL(10,2) NOT NULL,
+      currency TEXT DEFAULT 'EUR',
+      expense_date DATE NOT NULL,
+      category TEXT,
+      description TEXT,
+      created_by TEXT NOT NULL,
+      contact_id BIGINT REFERENCES #{name}.contacts(id) ON DELETE SET NULL,
+      status TEXT DEFAULT 'pending',
+      attachment_key TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
     """)

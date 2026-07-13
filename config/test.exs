@@ -7,7 +7,7 @@ import Config
 # Run `mix help test` for more information.
 config :crm_reactor, CrmReactor.Repo,
   username: "postgres_admin",
-  password: "MySuperSecurePasswordHere",
+  password: "change-me",
   hostname: "localhost",
   database: "crm_reactor_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,
@@ -35,5 +35,7 @@ config :swoosh, :api_client, false
 config :crm_reactor,
   classifier: CrmReactor.AI.MockClassifier,
   admin_token: "dev-admin-token"
+
+config :bcrypt_elixir, log_rounds: 1
 
 config :crm_reactor, CrmReactor.PromEx, disabled: true

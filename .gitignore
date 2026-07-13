@@ -33,6 +33,7 @@ crm_reactor-*.tar
 
 # Environment secrets
 .env
+.env-docker
 priv/uploads
 
 reactor-crm_ex.zip

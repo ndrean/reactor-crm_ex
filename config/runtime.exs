@@ -7,15 +7,15 @@ config :crm_reactor,
   mistral_vision_model: System.get_env("MISTRAL_VISION_MODEL", "ministral-3b-2512"),
   mistral_pass1_model: System.get_env("MISTRAL_PASS1_MODEL", "ministral-3b-latest"),
   mistral_review_model: System.get_env("MISTRAL_REVIEW_MODEL", "mistral-large-latest"),
-  whisper_url: System.get_env("WHISPER_URL", "http://localhost:8000"),
+  whisper_url: System.get_env("WHISPER_URL", "http://127.0.0.1:8000"),
+  whisper_provider:
+    if(System.get_env("WHISPER_PROVIDER") == "mistral", do: :mistral, else: :local),
   telegram_bot_token: System.get_env("TELEGRAM_BOT_TOKEN"),
   telegram_secret_token: System.get_env("TELEGRAM_SECRET_TOKEN"),
-  admin_token:
-    if(config_env() == :test,
-      do: "dev-admin-token",
-      else: System.get_env("ADMIN_TOKEN", "dev-admin-token")
-    ),
+  admin_token: System.get_env("ADMIN_TOKEN", "dev-admin-token"),
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads")
+
+config :telegex, token: System.get_env("TELEGRAM_BOT_TOKEN")
 
 cloak_key =
   System.get_env("CLOAK_KEY") ||

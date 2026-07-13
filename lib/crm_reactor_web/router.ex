@@ -1,6 +1,9 @@
 defmodule CrmReactorWeb.Router do
   use CrmReactorWeb, :router
 
+  import CrmReactorWeb.Plugs.AccountAuth,
+    only: [fetch_current_account: 2, redirect_if_authenticated: 2, require_admin: 2]
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -8,6 +11,7 @@ defmodule CrmReactorWeb.Router do
     plug :put_root_layout, html: {CrmReactorWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :fetch_current_account
   end
 
   pipeline :api do
@@ -18,10 +22,64 @@ defmodule CrmReactorWeb.Router do
     plug CrmReactorWeb.Plugs.RateLimiter
   end
 
+  # Public: login page (redirects if already logged in)
+  scope "/", CrmReactorWeb do
+    pipe_through [:browser, :redirect_if_authenticated]
+
+    live_session :redirect_if_authenticated,
+      on_mount: [{CrmReactorWeb.AccountAuth, :redirect_if_authenticated}] do
+      live "/login", LoginLive, :index
+    end
+  end
+
+  # Public: session create/delete (POST endpoints for phx-trigger-action)
   scope "/", CrmReactorWeb do
     pipe_through :browser
 
-    live "/chat", ChatLive, :index
+    post "/login", AccountSessionController, :create
+    delete "/logout", AccountSessionController, :delete
+    get "/logout", AccountSessionController, :delete
+  end
+
+  # Public: invite accept flow
+  scope "/", CrmReactorWeb do
+    pipe_through :browser
+
+    get "/invite/:token", InviteController, :show
+    post "/invite/:token", InviteController, :accept
+  end
+
+  # Root redirect to login
+  scope "/", CrmReactorWeb do
+    pipe_through :browser
+
+    get "/", AccountSessionController, :root
+  end
+
+  # User chat (requires confirmed user account)
+  scope "/", CrmReactorWeb do
+    pipe_through :browser
+
+    live_session :user,
+      on_mount: [{CrmReactorWeb.AccountAuth, :ensure_user}] do
+      live "/chat", ChatLive, :index
+    end
+  end
+
+  # Admin dashboard (requires admin account)
+  scope "/admin", CrmReactorWeb do
+    pipe_through [:browser, :require_admin]
+
+    live_session :admin,
+      on_mount: [{CrmReactorWeb.AccountAuth, :ensure_admin}],
+      root_layout: {CrmReactorWeb.Layouts, :admin_root} do
+      live "/", AdminLive.Dashboard, :index
+      live "/tenants", AdminLive.Tenants, :index
+      live "/users", AdminLive.Users, :index
+      live "/subscriptions", AdminLive.Subscriptions, :index
+      live "/logs", AdminLive.Logs, :index
+      live "/setup", AdminLive.TelegramSetup, :index
+    end
   end
 
   scope "/api", CrmReactorWeb do

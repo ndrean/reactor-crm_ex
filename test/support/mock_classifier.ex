@@ -9,9 +9,36 @@ defmodule CrmReactor.AI.MockClassifier do
   end
 
   @impl true
-  def classify_with_file(instruction, _file_content, _content_type, registry) do
-    classify(instruction, registry)
+  def classify_with_file(instruction, _file_content, content_type, registry) do
+    # When an image is uploaded with expense-related instruction (or no text),
+    # simulate the vision model extracting receipt data
+    if image_content_type?(content_type) and
+         (instruction == "" or instruction =~ ~r/reçu|ticket|note de frais|dépense/i) do
+      {:ok,
+       %{
+         steps: [
+           %{
+             workflow: "expenses",
+             action: "submit",
+             params: %{
+               "amount" => "23.50",
+               "date" => Date.utc_today() |> Date.to_iso8601(),
+               "category" => "transport",
+               "description" => "Course taxi"
+             },
+             routing_path: "vision"
+           }
+         ],
+         prompt_tokens: 200,
+         completion_tokens: 50,
+         total_tokens: 250
+       }}
+    else
+      classify(instruction, registry)
+    end
   end
+
+  defp image_content_type?(ct), do: ct in ~w(image/png image/jpeg image/jpg image/webp)
 
   @impl true
   def classify(text, registry, _routing_hint), do: classify(text, registry)
@@ -98,6 +125,13 @@ defmodule CrmReactor.AI.MockClassifier do
        fn text -> %{"subject" => extract_after(text, ~r/annule/)} end},
       {~r/déplace|reporte|reprogramme/i, "appointments", "reschedule",
        fn text -> %{"subject" => extract_after(text, ~r/déplace|reporte|reprogramme/)} end},
+      {~r/note de frais|dépense|reçu|ticket|expense|frais/i, "expenses", "submit",
+       fn _ ->
+         %{"amount" => "45.50", "category" => "restaurant", "description" => "Déjeuner client"}
+       end},
+      {~r/mes (notes de )?frais|mes dépenses|liste.*frais/i, "expenses", "list", fn _ -> %{} end},
+      {~r/supprime.*frais|supprime.*dépense/i, "expenses", "delete",
+       fn text -> %{"description" => extract_after(text, ~r/supprime/)} end},
       {~r/exporte|rapport/, "data", "dump", fn _ -> %{} end}
     ]
   end

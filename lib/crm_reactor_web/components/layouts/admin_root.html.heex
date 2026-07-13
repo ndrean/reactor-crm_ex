@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <title>Admin - CRM Reactor</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #1a1a1a; }
+      nav.admin-nav { background: #fff; border-bottom: 1px solid #e5e5e5; padding: 0 24px; display: flex; align-items: center; gap: 0; height: 52px; }
+      nav.admin-nav .brand { font-weight: 600; font-size: 1rem; margin-right: 32px; color: #1a1a1a; text-decoration: none; }
+      nav.admin-nav a { color: #666; text-decoration: none; font-size: 0.875rem; padding: 14px 12px; border-bottom: 2px solid transparent; transition: color 0.15s; }
+      nav.admin-nav a:hover { color: #1a1a1a; }
+      nav.admin-nav a.active { color: #4f46e5; border-bottom-color: #4f46e5; }
+      nav.admin-nav .spacer { flex: 1; }
+      nav.admin-nav .logout { color: #999; font-size: 0.8rem; }
+      .admin-content { max-width: 1000px; margin: 32px auto; padding: 0 24px; }
+      .admin-content h1 { font-size: 1.5rem; margin-bottom: 24px; }
+      .flash-info { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; padding: 10px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.875rem; }
+      .flash-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 10px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 0.875rem; }
+    </style>
+  </head>
+  <body>
+    <nav class="admin-nav">
+      <a href="/admin" class="brand">CRM Admin</a>
+      <a href="/admin">Dashboard</a>
+      <a href="/admin/tenants">Tenants</a>
+      <a href="/admin/users">Users</a>
+      <a href="/admin/subscriptions">Subscriptions</a>
+      <a href="/admin/logs">Logs</a>
+      <a href="/admin/setup">Telegram Setup</a>
+      <span class="spacer"></span>
+      <a href="/logout" class="logout">Logout</a>
+    </nav>
+    <div class="admin-content">
+      <%= @inner_content %>
+    </div>
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

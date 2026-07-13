@@ -1,7 +1,7 @@
 defmodule CrmReactor.Reactors.Modules.Mutations do
   @moduledoc "2-step confirm/reject flow for contact and todo mutations."
 
-  alias CrmReactor.CRM.{Contact, ExecutionLog, Todo}
+  alias CrmReactor.CRM.{Contact, ExecutionLog, Expense, Todo}
   alias CrmReactor.Reactors.Modules.DataExport
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.{Tenant, UserMapping}
@@ -216,6 +216,17 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
     Repo.transaction(fn ->
       Repo.get!(Todo, params["todo_id"], prefix: schema) |> Repo.delete!(prefix: schema)
       finalize_log!(log, schema, "Tâche supprimée.")
+    end)
+    |> unwrap_transaction(log)
+  end
+
+  defp execute_mutation(
+         %{module: "expenses", action: "delete", proposed_params: params} = log,
+         schema
+       ) do
+    Repo.transaction(fn ->
+      Repo.get!(Expense, params["expense_id"], prefix: schema) |> Repo.delete!(prefix: schema)
+      finalize_log!(log, schema, "Note de frais supprimée.")
     end)
     |> unwrap_transaction(log)
   end

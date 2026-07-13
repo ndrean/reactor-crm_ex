@@ -6,7 +6,7 @@ defmodule CrmReactor.Workers.IngestWorker do
   alias CrmReactor.Reactors.MasterIngest
   alias CrmReactor.Repo
   alias CrmReactor.Telegram
-  alias CrmReactor.Tenants.{Tenant, UserMapping}
+  alias CrmReactor.Tenants.TenantCache
 
   import Ecto.Query
 
@@ -63,14 +63,10 @@ defmodule CrmReactor.Workers.IngestWorker do
   end
 
   defp resolve_schema(user_id) do
-    query =
-      from m in UserMapping,
-        join: t in Tenant,
-        on: t.tenant_id == m.tenant_id,
-        where: m.user_identifier == ^user_id,
-        select: t.schema_name
-
-    Repo.one(query)
+    case TenantCache.lookup(user_id) do
+      {:ok, %{schema_name: schema}} -> schema
+      {:error, :unknown_user} -> nil
+    end
   end
 
   defp to_channel("http"), do: :http

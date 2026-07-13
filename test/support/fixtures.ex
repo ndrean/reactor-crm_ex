@@ -41,6 +41,12 @@ defmodule CrmReactor.TestFixtures do
       ["Réunion client", user_id, tomorrow_2pm, DateTime.add(tomorrow_2pm, 3600), "Bureau", 30]
     )
 
+    # Seed expense
+    Repo.query!(
+      "INSERT INTO #{tenant.schema_name}.expenses (amount, expense_date, category, description, created_by) VALUES ($1, $2, $3, $4, $5)",
+      [Decimal.new("42.50"), Date.utc_today(), "restaurant", "Déjeuner équipe", user_id]
+    )
+
     %{tenant: tenant, user_id: user_id}
   end
 

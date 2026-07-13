@@ -44,8 +44,8 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
                attachment.content_type,
                registry
              ) do
-          {:ok, _} = ok ->
-            ok
+          {:ok, result} ->
+            {:ok, inject_attachment_key(result, attachment.storage_key)}
 
           {:error, reason} ->
             Logger.warning(
@@ -119,6 +119,15 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
         completion_tokens: (result[:completion_tokens] || 0) + pass1_usage.completion_tokens,
         total_tokens: (result[:total_tokens] || 0) + pass1_usage.total_tokens
     }
+  end
+
+  defp inject_attachment_key(result, storage_key) do
+    steps =
+      Enum.map(result.steps, fn step ->
+        %{step | params: Map.put(step.params, "_attachment_key", storage_key)}
+      end)
+
+    %{result | steps: steps}
   end
 
   defp classifier do

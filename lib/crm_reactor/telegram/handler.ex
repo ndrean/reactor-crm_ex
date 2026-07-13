@@ -31,20 +31,27 @@ defmodule CrmReactor.Telegram.Handler do
   end
 
   def on_update(%{message: %{voice: voice, chat: %{id: chat_id}}}) when not is_nil(voice) do
-    {:ok, file} = Telegex.get_file(voice.file_id)
-    token = Application.fetch_env!(:crm_reactor, :telegram_bot_token)
-    audio_url = "https://api.telegram.org/file/bot#{token}/#{file.file_path}"
+    case Telegex.get_file(voice.file_id) do
+      {:ok, file} ->
+        token = Application.fetch_env!(:crm_reactor, :telegram_bot_token)
+        audio_url = "https://api.telegram.org/file/bot#{token}/#{file.file_path}"
 
-    %{
-      "user_id" => to_string(chat_id),
-      "text" => audio_url,
-      "channel" => "telegram",
-      "chat_id" => to_string(chat_id),
-      "is_audio" => true
-    }
-    |> IngestWorker.new()
-    |> Oban.insert()
-    |> log_insert_error(chat_id)
+        %{
+          "user_id" => to_string(chat_id),
+          "text" => audio_url,
+          "channel" => "telegram",
+          "chat_id" => to_string(chat_id),
+          "is_audio" => true
+        }
+        |> IngestWorker.new()
+        |> Oban.insert()
+        |> log_insert_error(chat_id)
+
+      {:error, reason} ->
+        require Logger
+        Logger.warning("Failed to get voice file: #{inspect(reason)}")
+        Telegram.send_message(to_string(chat_id), "Impossible de traiter le message vocal.")
+    end
 
     :ok
   end

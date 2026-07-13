@@ -103,6 +103,37 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntentTest do
     assert step.workflow == "contacts"
   end
 
+  test "attachment: image receipt routes to expenses.submit with _attachment_key injected" do
+    # Minimal valid PNG (1x1 pixel)
+    png_bytes =
+      <<137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8,
+        2, 0, 0, 0, 144, 119, 83, 222, 0, 0, 0, 12, 73, 68, 65, 84, 8, 215, 99, 248, 207, 192, 0,
+        0, 0, 2, 0, 1, 226, 33, 188, 51, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130>>
+
+    {:ok, key} = Storage.put("ci_tenant", "taxi_receipt.png", png_bytes)
+    attachment = %{storage_key: key, content_type: "image/png", filename: "taxi_receipt.png"}
+
+    {:ok, result} =
+      ClassifyIntent.run(
+        %{
+          text: "reçu taxi",
+          attachment: attachment,
+          tenant: @tenant,
+          user_id: "test_ci_user"
+        },
+        %{},
+        []
+      )
+
+    assert [step | _] = result.steps
+    assert step.workflow == "expenses"
+    assert step.action == "submit"
+    assert step.params["amount"] == "23.50"
+    assert step.params["category"] == "transport"
+    # Verify _attachment_key was injected by ClassifyIntent
+    assert step.params["_attachment_key"] == key
+  end
+
   test "attachment: missing storage key falls back to text classification" do
     attachment = %{
       storage_key: "no_such_tenant/ghost_file.txt",

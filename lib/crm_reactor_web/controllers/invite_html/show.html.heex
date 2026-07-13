@@ -1,0 +1,37 @@
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #f3f4f6;">
+  <div style="width: 100%; max-width: 400px; padding: 32px; background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <h1 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; text-align: center; color: #2563eb;">
+      CRM Reactor
+    </h1>
+    <p style="text-align: center; color: #6b7280; margin-bottom: 24px;">
+      Choisissez votre mot de passe pour activer votre compte.
+    </p>
+
+    <%= if @error do %>
+      <p style="color: #dc2626; margin-bottom: 12px; font-size: 0.9rem;"><%= @error %></p>
+    <% end %>
+
+    <form action={"/invite/#{@token}"} method="post" style="display: flex; flex-direction: column; gap: 16px;">
+      <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+      <div>
+        <label style="display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 4px;">
+          Mot de passe (8 caractères minimum)
+        </label>
+        <input
+          type="password"
+          name="password"
+          required
+          minlength="8"
+          autofocus
+          style="width: 100%; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 1rem;"
+        />
+      </div>
+      <button
+        type="submit"
+        style="padding: 12px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: 600;"
+      >
+        Activer mon compte
+      </button>
+    </form>
+  </div>
+</div>

@@ -3,7 +3,7 @@ import Config
 # Configure your database
 config :crm_reactor, CrmReactor.Repo,
   username: "postgres_admin",
-  password: "MySuperSecurePasswordHere",
+  password: "change-me",
   hostname: "localhost",
   database: "crm_reactor_dev",
   stacktrace: true,

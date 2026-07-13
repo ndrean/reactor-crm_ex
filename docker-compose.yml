@@ -1,17 +1,16 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg18-bookworm
+    env_file: .env-docker
+    # image: pgvector/pgvector:pg18-bookworm
+    image: postgres:18-bookworm
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,53 +19,73 @@ services:
         limits:
           memory: 512M
 
-  # app:
-  #   build: .
-  #   restart: unless-stopped
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   environment:
-  #     DATABASE_URL: ${DATABASE_URL}
-  #     SECRET_KEY_BASE: ${SECRET_KEY_BASE}
-  #     PHX_HOST: ${PHX_HOST}
-  #     PORT: ${PORT}
-  #     MISTRAL_API_KEY: ${MISTRAL_API_KEY}
-  #     WHISPER_URL: ${WHISPER_URL}
-  #     TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-  #     TELEGRAM_SECRET_TOKEN: ${TELEGRAM_SECRET_TOKEN}
-  #     ADMIN_TOKEN: ${ADMIN_TOKEN}
-  #     CLOAK_KEY: ${CLOAK_KEY}
-  #     PHX_SERVER: "true"
-  #   ports:
-  #     - "127.0.0.1:4000:4000"
-  #   extra_hosts:
-  #     - "host.docker.internal:host-gateway"
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-fs", "http://localhost:4000/api/health"]
-  #     interval: 15s
-  #     timeout: 5s
-  #     start_period: 20s
-  #     retries: 3
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 512M
-  #         cpus: "1.0"
+  migrate:
+    build: .
+    env_file: .env-docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: /app/bin/migrate
+    restart: "no"
 
-  whisper:
-    image: fedirz/faster-whisper-server:latest-cpu
+  app:
+    build: .
     restart: unless-stopped
+    env_file: .env-docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
-      WHISPER__MODEL: small
-      WHISPER__INFERENCE_DEVICE: cpu
-    ports:
-      - "127.0.0.1:8000:8000"
+      PHX_SERVER: "true"
+    expose:
+      - "4000"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4000/api/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: "2.0"
+          memory: 512M
+          cpus: "1.0"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env-docker
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # Replaced by Mistral Voxtral Mini (WHISPER_PROVIDER=mistral)
+  # whisper:
+  #   image: fedirz/faster-whisper-server:latest-cpu
+  #   restart: unless-stopped
+  #   environment:
+  #     WHISPER__MODEL: small
+  #     WHISPER__INFERENCE_DEVICE: cpu
+  #   ports:
+  #     - "127.0.0.1:8000:8000"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 2G
+  #         cpus: "2.0"
 
   prometheus:
     image: prom/prometheus:latest
@@ -84,8 +103,8 @@ services:
   grafana:
     image: grafana/grafana:latest
     restart: unless-stopped
+    env_file: .env-docker
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -104,3 +123,5 @@ volumes:
   pgdata:
   promdata:
   grafanadata:
+  caddy_data:
+  caddy_config:

@@ -35,4 +35,41 @@ defmodule CrmReactorWeb.ConnCase do
     CrmReactor.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  @doc "Logs in an account by putting the session token into the connection."
+  def log_in_account(conn, account) do
+    token = CrmReactor.Accounts.generate_account_session_token(account)
+
+    conn
+    |> Phoenix.ConnTest.init_test_session(%{})
+    |> Plug.Conn.put_session(:account_token, token)
+  end
+
+  @doc "Creates a user account for testing (no password — already confirmed)."
+  def register_and_log_in_user(conn, attrs \\ %{}) do
+    tenant_id = attrs[:tenant_id] || "test_tenant"
+    email = attrs[:email] || "user_#{System.unique_integer([:positive])}@test.com"
+
+    role = attrs[:role] || "user"
+
+    {:ok, account} =
+      %CrmReactor.Accounts.Account{}
+      |> CrmReactor.Accounts.Account.registration_changeset(%{
+        email: email,
+        password: "password1234",
+        role: role,
+        tenant_id: tenant_id
+      })
+      |> CrmReactor.Repo.insert()
+
+    # Force confirm
+    account
+    |> Ecto.Changeset.change(%{confirmed_at: DateTime.utc_now() |> DateTime.truncate(:second)})
+    |> CrmReactor.Repo.update!()
+
+    account = CrmReactor.Repo.get!(CrmReactor.Accounts.Account, account.id)
+
+    conn = log_in_account(conn, account)
+    %{conn: conn, account: account}
+  end
 end
