@@ -29,6 +29,38 @@ defmodule CrmReactor.AI.Telemetry do
     )
   end
 
+  def llm_tokens(metadata) do
+    :telemetry.execute(
+      [:crm_reactor, :ai, :llm, :tokens],
+      %{
+        prompt_tokens: metadata[:prompt_tokens] || 0,
+        completion_tokens: metadata[:completion_tokens] || 0,
+        total_tokens: metadata[:total_tokens] || 0
+      },
+      %{model: metadata[:model] || "unknown", operation: metadata[:operation] || "unknown"}
+    )
+  end
+
+  def vision_stop(start_time, metadata) do
+    duration = System.monotonic_time() - start_time
+
+    :telemetry.execute(
+      [:crm_reactor, :ai, :vision, :stop],
+      %{duration: duration},
+      metadata
+    )
+  end
+
+  def transcribe_stop(start_time, metadata) do
+    duration = System.monotonic_time() - start_time
+
+    :telemetry.execute(
+      [:crm_reactor, :ai, :transcribe, :stop],
+      %{duration: duration},
+      metadata
+    )
+  end
+
   def nl2sql_stop(start_time, metadata) do
     duration = System.monotonic_time() - start_time
 

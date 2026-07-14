@@ -136,6 +136,17 @@ defmodule CrmReactor.AI.QueryBuilder do
          ) do
       {:ok, %{status: 200, body: body}} ->
         [choice | _] = body["choices"]
+        usage = body["usage"]
+
+        if usage do
+          Telemetry.llm_tokens(%{
+            prompt_tokens: usage["prompt_tokens"] || 0,
+            completion_tokens: usage["completion_tokens"] || 0,
+            total_tokens: usage["total_tokens"] || 0,
+            model: "mistral-small-latest",
+            operation: :nl2sql
+          })
+        end
 
         case Jason.decode(choice["message"]["content"]) do
           {:ok, parsed} -> {:ok, parsed}

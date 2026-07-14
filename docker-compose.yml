@@ -106,6 +106,10 @@ services:
     env_file: .env-docker
     environment:
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_UNIFIED_ALERTING_ENABLED: "false"
+      GF_ALERTING_ENABLED: "false"
+      GF_DATAPROXY_TIMEOUT: "60"
+      GF_DATAPROXY_KEEP_ALIVE_SECONDS: "30"
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -117,7 +121,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 1536M
 
 volumes:
   pgdata:

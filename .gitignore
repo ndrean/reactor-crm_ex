@@ -29,7 +29,7 @@ crm_reactor-*.tar
 .elixir_ls/
 .expert/
 .hexdocs_mcp/
-
+*.zip
 
 # Environment secrets
 .env

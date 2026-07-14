@@ -2,4 +2,5 @@
 set -eu
 
 cd -P -- "$(dirname -- "$0")/.."
-exec ./bin/crm_reactor eval "CrmReactor.Release.migrate()"
+./bin/crm_reactor eval "CrmReactor.Release.migrate()"
+./bin/crm_reactor eval "CrmReactor.Release.create_admin()"

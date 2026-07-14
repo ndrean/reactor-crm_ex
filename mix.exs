@@ -29,7 +29,7 @@ defmodule CrmReactor.MixProject do
   def application do
     [
       mod: {CrmReactor.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :os_mon]
     ]
   end
 
@@ -68,6 +68,8 @@ defmodule CrmReactor.MixProject do
       {:bcrypt_elixir, "~> 3.0"},
       {:hammer, "~> 6.2"},
       {:phoenix_live_view, "~> 1.0"},
+      {:ecto_psql_extras, "~> 0.6"},
+      {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_html, "~> 4.1"},
       {:swoosh, "~> 1.16"},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},

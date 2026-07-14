@@ -43,14 +43,14 @@
       ]
     },
     {
-      "title": "Fallback Rate (Mistral -> Ollama)",
+      "title": "Model Escalation Rate (Small -> Large)",
       "type": "stat",
       "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
       "datasource": { "uid": "prometheus" },
       "targets": [
         {
           "expr": "increase(crm_reactor_ai_classify_fallback_total[1h])",
-          "legendFormat": "Fallbacks (1h)"
+          "legendFormat": "Escalations (1h)"
         }
       ],
       "fieldConfig": {
@@ -66,33 +66,33 @@
       }
     },
     {
-      "title": "NL2SQL Latency",
+      "title": "Token Usage by Model",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "datasource": { "uid": "prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.5, rate(crm_reactor_ai_nl2sql_duration_milliseconds_bucket[5m]))",
-          "legendFormat": "p50"
+          "expr": "increase(crm_reactor_ai_llm_prompt_tokens_total[5m])",
+          "legendFormat": "prompt {{ model }} ({{ operation }})"
         },
         {
-          "expr": "histogram_quantile(0.95, rate(crm_reactor_ai_nl2sql_duration_milliseconds_bucket[5m]))",
-          "legendFormat": "p95"
+          "expr": "increase(crm_reactor_ai_llm_completion_tokens_total[5m])",
+          "legendFormat": "completion {{ model }} ({{ operation }})"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "ms" }
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 20, "stacking": { "mode": "normal" } } }
       }
     },
     {
-      "title": "NL2SQL Fallback to Deterministic",
+      "title": "Total Tokens (1h)",
       "type": "stat",
       "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
       "datasource": { "uid": "prometheus" },
       "targets": [
         {
-          "expr": "increase(crm_reactor_ai_nl2sql_fallback_total[1h])",
-          "legendFormat": "Fallbacks (1h)"
+          "expr": "sum by (model) (increase(crm_reactor_ai_llm_total_tokens_total[1h]))",
+          "legendFormat": "{{ model }}"
         }
       ],
       "fieldConfig": {
@@ -100,15 +100,15 @@
           "thresholds": {
             "steps": [
               { "value": 0, "color": "green" },
-              { "value": 3, "color": "yellow" },
-              { "value": 10, "color": "red" }
+              { "value": 10000, "color": "yellow" },
+              { "value": 50000, "color": "red" }
             ]
           }
         }
       }
     },
     {
-      "title": "Prompt Injection Attempts Blocked",
+      "title": "Prompt Injection Blocked",
       "type": "stat",
       "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
       "datasource": { "uid": "prometheus" },
@@ -129,6 +129,98 @@
           }
         }
       }
+    },
+    {
+      "title": "NL2SQL Latency (p50 / p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, rate(crm_reactor_ai_nl2sql_duration_milliseconds_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(crm_reactor_ai_nl2sql_duration_milliseconds_bucket[5m]))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms" }
+      }
+    },
+    {
+      "title": "NL2SQL Fallback to Deterministic",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 16 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "increase(crm_reactor_ai_nl2sql_fallback_total[1h])",
+          "legendFormat": "Fallbacks (1h)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "green" },
+              { "value": 3, "color": "yellow" },
+              { "value": 10, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Vision Latency (p50 / p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, rate(crm_reactor_ai_vision_duration_milliseconds_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(crm_reactor_ai_vision_duration_milliseconds_bucket[5m]))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms" }
+      }
+    },
+    {
+      "title": "Transcription Latency (p50 / p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 24 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, rate(crm_reactor_ai_transcribe_duration_milliseconds_bucket[5m]))",
+          "legendFormat": "p50 {{ provider }}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(crm_reactor_ai_transcribe_duration_milliseconds_bucket[5m]))",
+          "legendFormat": "p95 {{ provider }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms" }
+      }
+    },
+    {
+      "title": "Transcription Count by Provider",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 24 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (provider) (increase(crm_reactor_ai_transcribe_duration_milliseconds_count[1h]))",
+          "legendFormat": "{{ provider }}"
+        }
+      ]
     }
   ],
   "templating": { "list": [] },

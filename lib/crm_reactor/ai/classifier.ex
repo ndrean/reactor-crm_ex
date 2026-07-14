@@ -11,6 +11,7 @@ defmodule CrmReactor.AI.Classifier do
     system_prompt = Prompts.build_pass1_prompt(registry_entries)
     model = Application.get_env(:crm_reactor, :mistral_model_small, "mistral-small-latest")
     api_key = Application.fetch_env!(:crm_reactor, :mistral_api_key)
+    start_time = System.monotonic_time()
 
     case Req.post("https://api.mistral.ai/v1/chat/completions",
            json: %{
@@ -26,7 +27,18 @@ defmodule CrmReactor.AI.Classifier do
            receive_timeout: 10_000
          ) do
       {:ok, %{status: 200, body: body}} ->
-        parse_pass1_response(body)
+        result = parse_pass1_response(body)
+        Telemetry.classify_stop(start_time, %{model: model, fallback: false})
+
+        case result do
+          {:ok, {_, _, usage}} ->
+            Telemetry.llm_tokens(Map.merge(usage, %{model: model, operation: :pass1}))
+
+          _ ->
+            :ok
+        end
+
+        result
 
       {:ok, %{status: status, body: body}} ->
         Logger.warning("Mistral Pass 1 error #{status}: #{inspect(body)}")
@@ -72,6 +84,7 @@ defmodule CrmReactor.AI.Classifier do
     system_prompt = Prompts.build_vision_prompt(registry_entries)
     model = Application.get_env(:crm_reactor, :mistral_vision_model, "ministral-3b-2512")
     api_key = Application.fetch_env!(:crm_reactor, :mistral_api_key)
+    start_time = System.monotonic_time()
 
     case Req.post("https://api.mistral.ai/v1/chat/completions",
            json: %{
@@ -90,7 +103,10 @@ defmodule CrmReactor.AI.Classifier do
            receive_timeout: 30_000
          ) do
       {:ok, %{status: 200, body: body}} ->
-        parse_llm_response(body)
+        result = parse_llm_response(body)
+        Telemetry.vision_stop(start_time, %{model: model})
+        emit_tokens_from_result(result, model, :vision)
+        result
 
       {:ok, %{status: status, body: body}} ->
         Logger.warning("Mistral vision error #{status}: #{inspect(body)}")
@@ -118,16 +134,19 @@ defmodule CrmReactor.AI.Classifier do
     model_large = Application.get_env(:crm_reactor, :mistral_model_large, "codestral-latest")
 
     case classify_mistral(text, system_prompt, model_small) do
-      {:ok, %{steps: [%{workflow: "none"}]}} ->
+      {:ok, %{steps: [%{workflow: "none"}]} = resp} ->
         Logger.info("#{model_small} returned 'none', escalating to #{model_large}")
         Telemetry.classify_fallback(%{reason: "small_no_match"})
+        emit_tokens_from_result({:ok, resp}, model_small, :classify)
 
         result = classify_mistral(text, system_prompt, model_large)
         Telemetry.classify_stop(start_time, %{model: model_large, fallback: true})
+        emit_tokens_from_result(result, model_large, :classify)
         result
 
       {:ok, _} = result ->
         Telemetry.classify_stop(start_time, %{model: model_small, fallback: false})
+        emit_tokens_from_result(result, model_small, :classify)
         result
 
       {:error, reason} ->
@@ -135,6 +154,7 @@ defmodule CrmReactor.AI.Classifier do
         Telemetry.classify_fallback(%{reason: inspect(reason)})
         result = classify_mistral(text, system_prompt, model_large)
         Telemetry.classify_stop(start_time, %{model: model_large, fallback: true})
+        emit_tokens_from_result(result, model_large, :classify)
         result
     end
   end
@@ -225,4 +245,16 @@ defmodule CrmReactor.AI.Classifier do
   defp build_file_message(instruction, content, _content_type) do
     "#{instruction}\n\nFile content:\n#{content}"
   end
+
+  defp emit_tokens_from_result({:ok, resp}, model, operation) do
+    Telemetry.llm_tokens(%{
+      prompt_tokens: resp[:prompt_tokens] || 0,
+      completion_tokens: resp[:completion_tokens] || 0,
+      total_tokens: resp[:total_tokens] || 0,
+      model: model,
+      operation: operation
+    })
+  end
+
+  defp emit_tokens_from_result(_, _, _), do: :ok
 end

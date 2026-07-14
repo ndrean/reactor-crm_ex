@@ -1,6 +1,8 @@
 defmodule CrmReactor.AI.Whisper do
   @moduledoc "Voice transcription via Whisper ASR or Mistral Voxtral API."
 
+  alias CrmReactor.AI.Telemetry
+
   def transcribe(audio_url) do
     provider = Application.get_env(:crm_reactor, :whisper_provider, :local)
 
@@ -14,6 +16,7 @@ defmodule CrmReactor.AI.Whisper do
 
   defp transcribe_mistral(audio_data) do
     api_key = Application.fetch_env!(:crm_reactor, :mistral_api_key)
+    start_time = System.monotonic_time()
 
     case Req.post("https://api.mistral.ai/v1/audio/transcriptions",
            form_multipart: [
@@ -25,6 +28,7 @@ defmodule CrmReactor.AI.Whisper do
            receive_timeout: 30_000
          ) do
       {:ok, %{status: 200, body: body}} ->
+        Telemetry.transcribe_stop(start_time, %{model: "voxtral-mini-latest", provider: :mistral})
         {:ok, body["text"]}
 
       {:ok, %{status: status, body: body}} ->
@@ -37,6 +41,7 @@ defmodule CrmReactor.AI.Whisper do
 
   defp transcribe_local(audio_data) do
     whisper_url = Application.get_env(:crm_reactor, :whisper_url, "http://127.0.0.1:8000")
+    start_time = System.monotonic_time()
 
     case Req.post("#{whisper_url}/v1/audio/transcriptions",
            form_multipart: [
@@ -46,9 +51,15 @@ defmodule CrmReactor.AI.Whisper do
            ],
            receive_timeout: 30_000
          ) do
-      {:ok, %{status: 200, body: body}} -> {:ok, body["text"]}
-      {:ok, %{status: status}} -> {:error, "Whisper error: #{status}"}
-      {:error, reason} -> {:error, reason}
+      {:ok, %{status: 200, body: body}} ->
+        Telemetry.transcribe_stop(start_time, %{model: "whisper-small", provider: :local})
+        {:ok, body["text"]}
+
+      {:ok, %{status: status}} ->
+        {:error, "Whisper error: #{status}"}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 end

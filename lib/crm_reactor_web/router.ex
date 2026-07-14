@@ -1,6 +1,8 @@
 defmodule CrmReactorWeb.Router do
   use CrmReactorWeb, :router
 
+  import Phoenix.LiveDashboard.Router
+
   import CrmReactorWeb.Plugs.AccountAuth,
     only: [fetch_current_account: 2, redirect_if_authenticated: 2, require_admin: 2]
 
@@ -70,6 +72,9 @@ defmodule CrmReactorWeb.Router do
   scope "/admin", CrmReactorWeb do
     pipe_through [:browser, :require_admin]
 
+    live_dashboard "/dashboard",
+      ecto_repos: CrmReactor.Repo
+
     live_session :admin,
       on_mount: [{CrmReactorWeb.AccountAuth, :ensure_admin}],
       root_layout: {CrmReactorWeb.Layouts, :admin_root} do
@@ -79,6 +84,7 @@ defmodule CrmReactorWeb.Router do
       live "/subscriptions", AdminLive.Subscriptions, :index
       live "/logs", AdminLive.Logs, :index
       live "/setup", AdminLive.TelegramSetup, :index
+
     end
   end
 
