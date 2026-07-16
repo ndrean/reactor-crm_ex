@@ -32,6 +32,10 @@ defmodule CrmReactorWeb.AdminLive.TelegramSetup do
         <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Telegram Chat ID</label>
         <input type="text" name="telegram_chat_id" required placeholder="123456789" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
       </div>
+      <div>
+        <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">User Email</label>
+        <input type="email" name="user_email" required placeholder="user@acme.com" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
+      </div>
       <button type="submit" style="padding:8px 20px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:0.875rem;cursor:pointer;">Provision & Link</button>
     </.admin_form>
 
@@ -57,10 +61,19 @@ defmodule CrmReactorWeb.AdminLive.TelegramSetup do
   @impl true
   def handle_event(
         "setup",
-        %{"tenant_id" => tid, "company_name" => name, "telegram_chat_id" => chat_id},
+        %{
+          "tenant_id" => tid,
+          "company_name" => name,
+          "telegram_chat_id" => chat_id,
+          "user_email" => user_email
+        },
         socket
-      ) do
-    case Provisioner.provision(tid, name, chat_id) do
+      )
+      when user_email != "" do
+    admin_email = socket.assigns.current_account.email
+    opts = [admin_email: admin_email, user_email: user_email]
+
+    case Provisioner.provision(tid, name, chat_id, opts) do
       {:ok, tenant} ->
         result = %{
           tenant_id: tenant.tenant_id,

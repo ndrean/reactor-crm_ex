@@ -5,6 +5,54 @@ A multi-tenant Natural Language Execution Router: an AI-assisted workflow runner
 Uses **Reactor** for workflow orchestration, **Oban** for durable job processing.
 **Phoenix** is used as the HTTP/webhook gateway, and Telegram for mobile devices.
 
+## Getting started
+
+### 1. Create an admin account
+
+After building and migrating the database:
+
+```bash
+# Development
+mix crm.create_admin admin@example.com MySecurePassword
+
+# Production (Docker release)
+docker exec -e ADMIN_EMAIL=admin@example.com -e ADMIN_PASSWORD=MySecurePassword \
+  <container> bin/crm_reactor eval "CrmReactor.Release.create_admin()"
+```
+
+The admin can then log in at `/login` and access the admin panel at `/admin`.
+
+### 2. Set up Telegram
+
+**Prerequisites:** create a Telegram bot via [@BotFather](https://t.me/BotFather) to get a bot token.
+
+Set these environment variables before starting the app:
+
+```bash
+TELEGRAM_BOT_TOKEN=<token from BotFather>
+TELEGRAM_SECRET_TOKEN=<any random string you choose>
+```
+
+Once the app is running, register the webhook with Telegram:
+
+```bash
+curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -d url="https://your-host.com/webhook/telegram" \
+  -d secret_token="${TELEGRAM_SECRET_TOKEN}"
+```
+
+Telegram will now forward all bot messages to your app. The `TELEGRAM_SECRET_TOKEN` is verified on every incoming request.
+
+### 3. Manage users
+
+**Web users** — the admin creates accounts from `/admin/users`. The user receives an email with an invite link to set their password. Login uses email + password.
+
+**Telegram users** — to connect a Telegram account, the user sends `/start` to the bot to get their chat ID, then gives it to the admin. The admin adds this chat ID as a "user mapping" in `/admin/users` (or uses the one-step `/admin/setup` page to provision a tenant + Telegram user together).
+
+### 4. Outbound webhooks (optional)
+
+Each tenant can have an outbound webhook URL configured in `/admin/tenants`. When set, the app will POST an HMAC-signed payload to that URL after every completed action. This is for integrating with external systems (CRM, ERP, etc.) — it is unrelated to the Telegram webhook above.
+
 ## Design philosophy
 
 Small cloud LLMs, structured outputs, no generated SQL: the LLM picks from a known action set — it never writes free-form code or queries.
