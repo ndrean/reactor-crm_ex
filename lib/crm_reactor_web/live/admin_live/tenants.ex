@@ -4,7 +4,7 @@ defmodule CrmReactorWeb.AdminLive.Tenants do
   import CrmReactorWeb.AdminComponents
 
   alias CrmReactor.Repo
-  alias CrmReactor.Tenants.{Tenant, Provisioner}
+  alias CrmReactor.Tenants.{Provisioner, Tenant}
 
   @impl true
   def mount(_params, _session, socket) do

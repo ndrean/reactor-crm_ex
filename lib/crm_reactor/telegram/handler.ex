@@ -59,9 +59,12 @@ defmodule CrmReactor.Telegram.Handler do
   def on_update(%{callback_query: %{data: data, message: %{chat: %{id: chat_id}}} = cq}) do
     [pending_id, decision] = String.split(data, ":")
 
-    case Mutations.confirm(pending_id, decision) do
+    case Mutations.confirm(pending_id, decision, to_string(chat_id)) do
       {:ok, %{output: output}} ->
         Telegram.send_message(to_string(chat_id), output)
+
+      {:error, :unauthorized} ->
+        Telegram.send_message(to_string(chat_id), "Action non autorisée.")
 
       {:error, _} ->
         Telegram.send_message(to_string(chat_id), "Action expirée ou introuvable.")

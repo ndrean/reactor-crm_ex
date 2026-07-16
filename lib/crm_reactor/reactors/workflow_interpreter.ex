@@ -21,17 +21,41 @@ defmodule CrmReactor.Reactors.WorkflowInterpreter do
     normalized = Enum.map(steps, &normalize_step/1)
     sorted = topological_sort(normalized)
 
-    Enum.reduce_while(sorted, {:ok, %{}}, fn step, {:ok, env} ->
+    if length(sorted) != length(normalized) do
+      {:error, :cyclical_dependency}
+    else
+      run_sorted(sorted, normalized, module_map, context)
+    end
+  end
+
+  defp run_sorted(sorted, normalized, module_map, context) do
+    Enum.reduce_while(sorted, {:ok, %{}, MapSet.new()}, fn step, {:ok, env, failed} ->
+      execute_or_skip(step, env, failed, module_map, context)
+    end)
+    |> then(fn {:ok, env, _failed} -> {:ok, env} end)
+    |> collect_output(normalized)
+  end
+
+  defp execute_or_skip(step, env, failed, module_map, context) do
+    if Enum.any?(step.depends_on, &MapSet.member?(failed, &1)) do
+      Logger.warning("Skipping step #{step.id}: dependency failed")
+      {:cont, {:ok, env, MapSet.put(failed, step.id)}}
+    else
       resolved_params = resolve_refs(step.params, env)
 
       case run_step(%{step | params: resolved_params}, env, module_map, context) do
-        {:ok, %{action: "pending"} = r} -> {:halt, {:ok, Map.put(env, step.id, r)}}
-        {:ok, %{action: "clarify"} = r} -> {:halt, {:ok, Map.put(env, step.id, r)}}
-        {:ok, r} -> {:cont, {:ok, Map.put(env, step.id, r)}}
-        error -> {:halt, error}
+        {:ok, %{action: action} = r} when action in ~w(pending clarify) ->
+          {:halt, {:ok, Map.put(env, step.id, r), failed}}
+
+        {:ok, r} ->
+          {:cont, {:ok, Map.put(env, step.id, r), failed}}
+
+        {:error, reason} ->
+          Logger.warning("Step #{step.id} failed: #{inspect(reason)}, continuing pipeline")
+          error_result = %{output: "Erreur lors de l'étape #{step.id}.", action: "error"}
+          {:cont, {:ok, Map.put(env, step.id, error_result), MapSet.put(failed, step.id)}}
       end
-    end)
-    |> collect_output(normalized)
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -178,6 +202,15 @@ defmodule CrmReactor.Reactors.WorkflowInterpreter do
 
       _ ->
         combined = Enum.map_join(oks, "\n", fn {:ok, r} -> r.output end)
+
+        combined =
+          if errors != [] do
+            error_count = length(errors)
+            combined <> "\n(#{error_count} opération(s) ont échoué)"
+          else
+            combined
+          end
+
         {:ok, last} = List.last(oks)
         {:ok, Map.put(last, :output, combined)}
     end
@@ -264,6 +297,4 @@ defmodule CrmReactor.Reactors.WorkflowInterpreter do
         {:ok, Map.put(last, :output, combined)}
     end
   end
-
-  defp collect_output(error, _steps), do: error
 end

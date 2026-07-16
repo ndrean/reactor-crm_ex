@@ -11,52 +11,12 @@ defmodule CrmReactor.Reactors.Modules.Appointments do
   def execute(%{action: "create"} = ctx) do
     contact_id = resolve_contact_id(ctx.params["contact_name"], ctx.tenant_schema)
 
-    with {:ok, starts_at} <- parse_datetime(ctx.params["date"], ctx.params["time"]) do
-      ends_at = compute_ends_at(starts_at, ctx.params["duration"])
-      reminder_minutes = parse_reminder_minutes(ctx.params["reminder_minutes"])
-
-      attrs = %{
-        subject: extract_subject(ctx.params),
-        starts_at: starts_at,
-        ends_at: ends_at,
-        location: ctx.params["location"],
-        reminder_minutes: reminder_minutes,
-        created_by: ctx.user_id,
-        contact_id: contact_id
-      }
-
-      case %Todo{} |> Todo.changeset(attrs) |> Repo.insert(prefix: ctx.tenant_schema) do
-        {:ok, todo} ->
-          job_id = schedule_reminder(todo, ctx)
-
-          if job_id do
-            todo
-            |> Ecto.Changeset.change(reminder_job_id: job_id)
-            |> Repo.update!(prefix: ctx.tenant_schema)
-          end
-
-          location_str = if todo.location, do: " à #{todo.location}", else: ""
-          date_str = Calendar.strftime(starts_at, "%d/%m/%Y à %Hh%M")
-
-          {:ok,
-           %{
-             output: "Rendez-vous créé : #{todo.subject} le #{date_str}#{location_str}",
-             action: "create",
-             data: %{
-               "todo_id" => todo.id,
-               "subject" => todo.subject,
-               "starts_at" => DateTime.to_iso8601(starts_at),
-               "reminder_job_id" => job_id
-             }
-           }}
-
-        {:error, changeset} ->
-          msgs = Ecto.Changeset.traverse_errors(changeset, fn {m, _} -> m end) |> inspect()
-          {:ok, %{output: "Impossible de créer le rendez-vous : #{msgs}", action: "create"}}
-      end
-    else
+    case parse_datetime(ctx.params["date"], ctx.params["time"]) do
       {:error, reason} ->
         {:ok, %{output: "Erreur de date/heure : #{reason}", action: "create"}}
+
+      {:ok, starts_at} ->
+        do_create(ctx, contact_id, starts_at)
     end
   end
 
@@ -110,7 +70,7 @@ defmodule CrmReactor.Reactors.Modules.Appointments do
           })
           |> Repo.update!(prefix: ctx.tenant_schema)
 
-        schedule_pending_timeout(log.pending_id)
+        schedule_pending_timeout(log.pending_id, ctx.tenant_schema)
         date_str = Calendar.strftime(match.starts_at, "%d/%m/%Y à %Hh%M")
 
         {:ok,
@@ -147,7 +107,7 @@ defmodule CrmReactor.Reactors.Modules.Appointments do
           })
           |> Repo.update!(prefix: ctx.tenant_schema)
 
-        schedule_pending_timeout(log.pending_id)
+        schedule_pending_timeout(log.pending_id, ctx.tenant_schema)
         date_str = Calendar.strftime(match.starts_at, "%d/%m/%Y à %Hh%M")
 
         {:ok,
@@ -173,6 +133,51 @@ defmodule CrmReactor.Reactors.Modules.Appointments do
   end
 
   # ── Private ────────────────────────────────────────────────────────────
+
+  defp do_create(ctx, contact_id, starts_at) do
+    ends_at = compute_ends_at(starts_at, ctx.params["duration"])
+    reminder_minutes = parse_reminder_minutes(ctx.params["reminder_minutes"])
+
+    attrs = %{
+      subject: extract_subject(ctx.params),
+      starts_at: starts_at,
+      ends_at: ends_at,
+      location: ctx.params["location"],
+      reminder_minutes: reminder_minutes,
+      created_by: ctx.user_id,
+      contact_id: contact_id
+    }
+
+    case %Todo{} |> Todo.changeset(attrs) |> Repo.insert(prefix: ctx.tenant_schema) do
+      {:ok, todo} ->
+        job_id = schedule_reminder(todo, ctx)
+
+        if job_id do
+          todo
+          |> Ecto.Changeset.change(reminder_job_id: job_id)
+          |> Repo.update!(prefix: ctx.tenant_schema)
+        end
+
+        location_str = if todo.location, do: " à #{todo.location}", else: ""
+        date_str = Calendar.strftime(starts_at, "%d/%m/%Y à %Hh%M")
+
+        {:ok,
+         %{
+           output: "Rendez-vous créé : #{todo.subject} le #{date_str}#{location_str}",
+           action: "create",
+           data: %{
+             "todo_id" => todo.id,
+             "subject" => todo.subject,
+             "starts_at" => DateTime.to_iso8601(starts_at),
+             "reminder_job_id" => job_id
+           }
+         }}
+
+      {:error, changeset} ->
+        msgs = Ecto.Changeset.traverse_errors(changeset, fn {m, _} -> m end) |> inspect()
+        {:ok, %{output: "Impossible de créer le rendez-vous : #{msgs}", action: "create"}}
+    end
+  end
 
   defp find_appointments(ctx) do
     subject = extract_subject(ctx.params)
@@ -256,37 +261,88 @@ defmodule CrmReactor.Reactors.Modules.Appointments do
     end
   end
 
-  defp apply_date_filter(query, %{"date" => date_str}) when is_binary(date_str) do
-    case Date.from_iso8601(date_str) do
-      {:ok, date} ->
-        start_of_day = DateTime.new!(date, ~T[00:00:00], "Etc/UTC")
-        end_of_day = DateTime.new!(date, ~T[23:59:59], "Etc/UTC")
-        from(t in query, where: t.starts_at >= ^start_of_day and t.starts_at <= ^end_of_day)
-
-      _ ->
-        apply_date_filter(query, %{})
+  # due_on: exact date (same as todos)
+  defp apply_date_filter(query, %{"due_on" => on_str}) do
+    case parse_date(on_str) do
+      nil -> apply_date_filter(query, %{})
+      date -> date_range_filter(query, date, date)
     end
   end
 
+  # Both bounds explicit
+  defp apply_date_filter(query, %{"due_before" => before_str, "due_after" => after_str}) do
+    case {parse_date(after_str), parse_date(before_str)} do
+      {nil, _} -> apply_date_filter(query, %{"due_before" => before_str})
+      {_, nil} -> apply_date_filter(query, %{"due_after" => after_str})
+      {after_d, before_d} -> date_range_filter(query, after_d, before_d)
+    end
+  end
+
+  # due_before only
+  defp apply_date_filter(query, %{"due_before" => before_str}) do
+    today = Date.utc_today()
+
+    case parse_date(before_str) do
+      nil ->
+        apply_date_filter(query, %{})
+
+      before ->
+        if Date.compare(before, today) == :lt do
+          end_dt = DateTime.new!(before, ~T[23:59:59], "Etc/UTC")
+          from(t in query, where: t.starts_at <= ^end_dt)
+        else
+          date_range_filter(query, today, before)
+        end
+    end
+  end
+
+  # due_after only
+  defp apply_date_filter(query, %{"due_after" => after_str}) do
+    case parse_date(after_str) do
+      nil ->
+        apply_date_filter(query, %{})
+
+      after_d ->
+        start_dt = DateTime.new!(after_d, ~T[00:00:00], "Etc/UTC")
+        from(t in query, where: t.starts_at >= ^start_dt)
+    end
+  end
+
+  # Legacy: "date" param (backward compat)
+  defp apply_date_filter(query, %{"date" => date_str}) when is_binary(date_str) do
+    apply_date_filter(query, %{"due_on" => date_str})
+  end
+
+  # Legacy: "period" param (backward compat)
   defp apply_date_filter(query, %{"period" => "today"}) do
     today = Date.utc_today()
-    start_of_day = DateTime.new!(today, ~T[00:00:00], "Etc/UTC")
-    end_of_day = DateTime.new!(today, ~T[23:59:59], "Etc/UTC")
-    from(t in query, where: t.starts_at >= ^start_of_day and t.starts_at <= ^end_of_day)
+    date_range_filter(query, today, today)
   end
 
   defp apply_date_filter(query, %{"period" => "week"}) do
     today = Date.utc_today()
-    end_date = Date.add(today, 7)
-    start_dt = DateTime.new!(today, ~T[00:00:00], "Etc/UTC")
-    end_dt = DateTime.new!(end_date, ~T[23:59:59], "Etc/UTC")
-    from(t in query, where: t.starts_at >= ^start_dt and t.starts_at <= ^end_dt)
+    date_range_filter(query, today, Date.add(today, 7))
   end
 
   # Default: today and future
   defp apply_date_filter(query, _params) do
     now = DateTime.utc_now()
     from(t in query, where: t.starts_at >= ^now)
+  end
+
+  defp date_range_filter(query, from_date, to_date) do
+    start_dt = DateTime.new!(from_date, ~T[00:00:00], "Etc/UTC")
+    end_dt = DateTime.new!(to_date, ~T[23:59:59], "Etc/UTC")
+    from(t in query, where: t.starts_at >= ^start_dt and t.starts_at <= ^end_dt)
+  end
+
+  defp parse_date(nil), do: nil
+
+  defp parse_date(date_str) when is_binary(date_str) do
+    case Date.from_iso8601(date_str) do
+      {:ok, date} -> date
+      _ -> nil
+    end
   end
 
   defp apply_contact_filter(query, nil, _schema), do: query
@@ -354,8 +410,8 @@ defmodule CrmReactor.Reactors.Modules.Appointments do
   end
 
   @pending_timeout_seconds 15 * 60
-  defp schedule_pending_timeout(pending_id) do
-    %{"pending_id" => pending_id}
+  defp schedule_pending_timeout(pending_id, schema) do
+    %{"pending_id" => pending_id, "schema_name" => schema}
     |> PendingTimeoutWorker.new(schedule_in: @pending_timeout_seconds)
     |> Oban.insert()
   end

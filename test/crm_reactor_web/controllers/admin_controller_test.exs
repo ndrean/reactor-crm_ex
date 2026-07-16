@@ -2,11 +2,10 @@ defmodule CrmReactorWeb.AdminControllerTest do
   use CrmReactorWeb.ConnCase
   alias CrmReactor.AI.SubscriptionCache
 
-  @admin_token "dev-admin-token"
-
   setup %{conn: conn} do
-    conn = put_req_header(conn, "authorization", "bearer #{@admin_token}")
-    {:ok, conn: conn}
+    token = Application.get_env(:crm_reactor, :admin_token)
+    conn = put_req_header(conn, "authorization", "bearer #{token}")
+    {:ok, conn: conn, admin_token: token}
   end
 
   test "POST /api/admin/provision - creates tenant", %{conn: conn} do
@@ -221,6 +220,117 @@ defmodule CrmReactorWeb.AdminControllerTest do
       |> get("/api/admin/webhook_secret", %{tenant_id: fixture.tenant.tenant_id})
       |> json_response(404)
     end
+  end
+
+  test "POST /api/admin/provision - duplicate tenant_id returns 422", %{conn: conn} do
+    tid = "dup_prov_#{System.unique_integer([:positive])}"
+
+    conn
+    |> post("/api/admin/provision", %{tenant_id: tid, company_name: "First Corp"})
+    |> json_response(200)
+
+    resp =
+      conn
+      |> post("/api/admin/provision", %{tenant_id: tid, company_name: "Second Corp"})
+      |> json_response(422)
+
+    assert resp["error"]
+
+    on_exit(fn ->
+      CrmReactor.Repo.query!("DROP SCHEMA IF EXISTS customer_#{tid} CASCADE")
+      CrmReactor.Repo.query!("DELETE FROM global_registry.tenants WHERE tenant_id = '#{tid}'")
+
+      CrmReactor.Repo.query!(
+        "DELETE FROM global_registry.user_mappings WHERE tenant_id = '#{tid}'"
+      )
+    end)
+  end
+
+  test "POST /api/admin/provision - with user_id key (not telegram_chat_id)", %{conn: conn} do
+    tid = "uid_prov_#{System.unique_integer([:positive])}"
+
+    resp =
+      conn
+      |> post("/api/admin/provision", %{
+        tenant_id: tid,
+        company_name: "UID Corp",
+        user_id: "web_user_123"
+      })
+      |> json_response(200)
+
+    assert resp["success"] == true
+
+    on_exit(fn ->
+      CrmReactor.Repo.query!("DROP SCHEMA IF EXISTS customer_#{tid} CASCADE")
+      CrmReactor.Repo.query!("DELETE FROM global_registry.tenants WHERE tenant_id = '#{tid}'")
+
+      CrmReactor.Repo.query!(
+        "DELETE FROM global_registry.user_mappings WHERE tenant_id = '#{tid}'"
+      )
+    end)
+  end
+
+  test "POST /api/admin/subjects/:id/email-export - sends email when user has email", %{
+    conn: conn
+  } do
+    tid = "email_exp_#{System.unique_integer([:positive])}"
+    user_id = "email_user_#{System.unique_integer([:positive])}"
+
+    {:ok, tenant} =
+      CrmReactor.Tenants.Provisioner.provision(tid, "Email Corp", user_id,
+        user_email: "gdpr_test@example.com"
+      )
+
+    on_exit(fn -> CrmReactor.Tenants.Provisioner.drop_tenant(tenant) end)
+
+    resp =
+      conn
+      |> post("/api/admin/subjects/#{user_id}/email-export")
+      |> json_response(200)
+
+    assert resp["success"] == true
+    assert resp["message"] =~ "email"
+  end
+
+  test "auth rejects wrong token", %{conn: _conn} do
+    build_conn()
+    |> put_req_header("authorization", "bearer wrong-token-here")
+    |> get("/api/admin/subjects/nobody/export")
+    |> json_response(401)
+  end
+
+  test "POST /api/admin/provision - invalid tenant_id returns 400", %{conn: conn} do
+    resp =
+      conn
+      |> post("/api/admin/provision", %{
+        tenant_id: "INVALID ID!",
+        company_name: "Bad Corp"
+      })
+      |> json_response(400)
+
+    assert resp["error"] =~ "Invalid tenant_id"
+  end
+
+  test "DELETE /api/admin/contacts - invalid schema returns 400", %{conn: conn} do
+    conn
+    |> delete("/api/admin/contacts/INVALID SCHEMA/123")
+    |> json_response(400)
+  end
+
+  test "DELETE /api/admin/contacts - non-numeric contact_id returns 400", %{conn: conn} do
+    conn
+    |> delete("/api/admin/contacts/customer_test/abc")
+    |> json_response(400)
+  end
+
+  test "auth accepts uppercase Bearer prefix", %{admin_token: token} do
+    resp =
+      build_conn()
+      |> put_req_header("authorization", "Bearer #{token}")
+      |> get("/api/admin/subjects/nobody/export")
+      |> json_response(404)
+
+    assert resp["error"] =~ "not found"
   end
 
   describe "PUT /api/admin/subscriptions" do

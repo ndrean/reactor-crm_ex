@@ -98,16 +98,7 @@ defmodule CrmReactor.AI.Prompts do
     workflows_desc =
       registry_entries
       |> Enum.group_by(& &1.workflow_name)
-      |> Enum.map_join("\n", fn {workflow, entries} ->
-        actions_with_hints =
-          entries
-          |> Enum.uniq_by(& &1.action)
-          |> Enum.map_join(", ", fn e ->
-            if e.prompt_hint, do: "#{e.action} (#{e.prompt_hint})", else: e.action
-          end)
-
-        "- #{workflow}: #{actions_with_hints}"
-      end)
+      |> Enum.map_join("\n", &format_workflow_line/1)
 
     """
     <role>
@@ -212,5 +203,16 @@ defmodule CrmReactor.AI.Prompts do
     user says "supprime-le", use search_name="Tom User", NOT "le".
     </context>
     """
+  end
+
+  defp format_workflow_line({workflow, entries}) do
+    actions =
+      entries
+      |> Enum.uniq_by(& &1.action)
+      |> Enum.map_join(", ", fn e ->
+        if e.prompt_hint, do: "#{e.action} (#{e.prompt_hint})", else: e.action
+      end)
+
+    "- #{workflow}: #{actions}"
   end
 end

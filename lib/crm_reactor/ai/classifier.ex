@@ -24,7 +24,8 @@ defmodule CrmReactor.AI.Classifier do
              temperature: 0
            },
            headers: [{"authorization", "Bearer #{api_key}"}],
-           receive_timeout: 10_000
+           receive_timeout: 10_000,
+           finch: CrmReactor.Finch
          ) do
       {:ok, %{status: 200, body: body}} ->
         result = parse_pass1_response(body)
@@ -100,7 +101,8 @@ defmodule CrmReactor.AI.Classifier do
              temperature: 0
            },
            headers: [{"authorization", "Bearer #{api_key}"}],
-           receive_timeout: 30_000
+           receive_timeout: 30_000,
+           finch: CrmReactor.Finch
          ) do
       {:ok, %{status: 200, body: body}} ->
         result = parse_llm_response(body)
@@ -173,7 +175,8 @@ defmodule CrmReactor.AI.Classifier do
              temperature: 0
            },
            headers: [{"authorization", "Bearer #{api_key}"}],
-           receive_timeout: 15_000
+           receive_timeout: 15_000,
+           finch: CrmReactor.Finch
          ) do
       {:ok, %{status: 200, body: body}} ->
         parse_llm_response(body)

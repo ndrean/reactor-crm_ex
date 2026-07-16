@@ -10,16 +10,21 @@ defmodule CrmReactor.Application do
       CrmReactorWeb.Telemetry,
       CrmReactor.Repo,
       CrmReactor.Vault,
+      {Finch,
+       name: CrmReactor.Finch,
+       pools: %{
+         "https://api.mistral.ai" => [size: 50, count: 1],
+         :default => [size: 10]
+       }},
       CrmReactor.Tenants.TenantCache,
       CrmReactor.AI.RegistryCache,
       CrmReactor.AI.SubscriptionCache,
+      CrmReactor.AI.ConversationCache,
       {DNSCluster, query: Application.get_env(:crm_reactor, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: CrmReactor.PubSub},
       {Oban, Application.fetch_env!(:crm_reactor, Oban)},
       CrmReactorWeb.Endpoint
     ]
-
-    CrmReactor.AI.ConversationCache.create_table()
 
     opts = [strategy: :one_for_one, name: CrmReactor.Supervisor]
     Supervisor.start_link(children, opts)

@@ -1,8 +1,8 @@
 defmodule CrmReactor.TenantsTest do
   use CrmReactor.DataCase
 
-  alias CrmReactor.Tenants
-  alias CrmReactor.TestFixtures
+  alias CrmReactor.{Tenants, TestFixtures}
+  alias CrmReactor.Tenants.Provisioner
 
   setup do
     fixture = TestFixtures.provision_test_tenant()
@@ -21,7 +21,7 @@ defmodule CrmReactor.TenantsTest do
   end
 
   test "inactive tenant returns {:error, :unknown_user}", %{tenant: tenant, user_id: user_id} do
-    {:ok, _} = CrmReactor.Tenants.Provisioner.toggle_active(tenant.tenant_id, false)
+    {:ok, _} = Provisioner.toggle_active(tenant.tenant_id, false)
 
     assert {:error, :unknown_user} = Tenants.schema_for_user(user_id)
   end

@@ -1,18 +1,22 @@
 defmodule CrmReactorWeb.Plugs.RateLimiter do
-  @moduledoc "Rate limiter plug using Hammer. 30 requests/minute per user_id."
+  @moduledoc "Rate limiter plug using Hammer. Configurable limits via plug options."
   import Plug.Conn
 
-  @max_requests 30
-  @window_ms 60_000
+  @default_max 30
+  @default_window_ms 60_000
 
   def init(opts), do: opts
 
-  def call(conn, _opts) do
+  def call(conn, opts) do
+    max = Keyword.get(opts, :max, @default_max)
+    window = Keyword.get(opts, :window_ms, @default_window_ms)
+    prefix = Keyword.get(opts, :prefix, "crm")
+
     ip = conn.remote_ip |> :inet.ntoa() |> to_string()
     user_id = conn.params["user_id"]
-    key = if user_id, do: "crm:#{user_id}:#{ip}", else: "crm_ip:#{ip}"
+    key = if user_id, do: "#{prefix}:#{user_id}:#{ip}", else: "#{prefix}_ip:#{ip}"
 
-    case Hammer.check_rate(key, @window_ms, @max_requests) do
+    case Hammer.check_rate(key, window, max) do
       {:allow, _count} ->
         conn
 

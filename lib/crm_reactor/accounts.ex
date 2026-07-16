@@ -3,9 +3,11 @@ defmodule CrmReactor.Accounts do
 
   import Ecto.Query
 
-  alias CrmReactor.Repo
   alias CrmReactor.Accounts.{Account, AccountToken}
-  alias CrmReactor.Tenants.{UserMapping, TenantCache}
+  alias CrmReactor.Emails.{InviteEmail, PasswordResetEmail}
+  alias CrmReactor.Mailer
+  alias CrmReactor.Repo
+  alias CrmReactor.Tenants.{TenantCache, UserMapping}
 
   # ── Login ──────────────────────────────────────────────────────────────────
 
@@ -94,24 +96,7 @@ defmodule CrmReactor.Accounts do
          }}
 
       :ok ->
-        Repo.transaction(fn ->
-          case %Account{} |> Account.invite_changeset(attrs) |> Repo.insert() do
-            {:ok, account} ->
-              %UserMapping{}
-              |> UserMapping.changeset(%{
-                user_identifier: account.email,
-                tenant_id: account.tenant_id,
-                user_email: account.email
-              })
-              |> Repo.insert!()
-
-              TenantCache.reload()
-              account
-
-            {:error, changeset} ->
-              Repo.rollback(changeset)
-          end
-        end)
+        insert_user_with_mapping(attrs)
     end
   end
 
@@ -123,8 +108,8 @@ defmodule CrmReactor.Accounts do
 
     invite_url = "#{base_url}/invite/#{encoded_token}"
 
-    email = CrmReactor.Emails.InviteEmail.build(account.email, account.name, invite_url)
-    CrmReactor.Mailer.deliver(email)
+    email = InviteEmail.build(account.email, account.name, invite_url)
+    Mailer.deliver(email)
 
     {:ok, encoded_token}
   end
@@ -177,16 +162,33 @@ defmodule CrmReactor.Accounts do
     |> Repo.update()
   end
 
+  def delete_account(%Account{} = account) do
+    Repo.transaction(fn ->
+      # Delete all tokens (session, invite)
+      from(t in AccountToken, where: t.account_id == ^account.id) |> Repo.delete_all()
+
+      # Delete associated user mapping
+      from(m in UserMapping,
+        where: m.user_email == ^account.email and m.tenant_id == ^account.tenant_id
+      )
+      |> Repo.delete_all()
+
+      Repo.delete!(account)
+    end)
+    |> tap(fn
+      {:ok, _} -> TenantCache.reload()
+      _ -> :ok
+    end)
+  end
+
   def deliver_password_reset_email(%Account{} = account, base_url) do
     {encoded_token, token_struct} = AccountToken.build_invite_token(account)
     Repo.insert!(token_struct)
 
     reset_url = "#{base_url}/invite/#{encoded_token}"
 
-    email =
-      CrmReactor.Emails.PasswordResetEmail.build(account.email, account.name, reset_url)
-
-    CrmReactor.Mailer.deliver(email)
+    email = PasswordResetEmail.build(account.email, account.name, reset_url)
+    Mailer.deliver(email)
 
     {:ok, encoded_token}
   end
@@ -198,5 +200,29 @@ defmodule CrmReactor.Accounts do
   def list_user_accounts do
     from(a in Account, where: a.role == "user", order_by: [asc: a.email])
     |> Repo.all()
+  end
+
+  defp insert_user_with_mapping(attrs) do
+    Repo.transaction(fn ->
+      case %Account{} |> Account.invite_changeset(attrs) |> Repo.insert() do
+        {:ok, account} ->
+          %UserMapping{}
+          |> UserMapping.changeset(%{
+            user_identifier: account.email,
+            tenant_id: account.tenant_id,
+            user_email: account.email
+          })
+          |> Repo.insert!()
+
+          account
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+    |> tap(fn
+      {:ok, _} -> TenantCache.reload()
+      _ -> :ok
+    end)
   end
 end

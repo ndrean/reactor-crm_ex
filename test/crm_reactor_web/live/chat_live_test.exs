@@ -3,8 +3,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
 
   import Phoenix.LiveViewTest
 
-  alias CrmReactor.TestFixtures
-  alias CrmReactor.Tenants.TenantCache
+  alias CrmReactor.{Repo, TestFixtures}
+  alias CrmReactor.Tenants.{TenantCache, UserMapping}
 
   @vcf_path "user.vcf"
 
@@ -16,12 +16,12 @@ defmodule CrmReactorWeb.ChatLiveTest do
       })
 
     # Add a user mapping for the account's email so the Reactor can resolve it
-    %CrmReactor.Tenants.UserMapping{}
-    |> CrmReactor.Tenants.UserMapping.changeset(%{
+    %UserMapping{}
+    |> UserMapping.changeset(%{
       user_identifier: account.email,
       tenant_id: fixture.tenant.tenant_id
     })
-    |> CrmReactor.Repo.insert!()
+    |> Repo.insert!()
 
     TenantCache.reload()
     %{conn: conn, account: account}

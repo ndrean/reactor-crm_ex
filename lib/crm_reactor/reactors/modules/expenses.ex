@@ -71,7 +71,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
           })
           |> Repo.update!(prefix: ctx.tenant_schema)
 
-        schedule_pending_timeout(log.pending_id)
+        schedule_pending_timeout(log.pending_id, ctx.tenant_schema)
 
         {:ok,
          %{
@@ -214,8 +214,8 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
   end
 
   @pending_timeout_seconds 15 * 60
-  defp schedule_pending_timeout(pending_id) do
-    %{"pending_id" => pending_id}
+  defp schedule_pending_timeout(pending_id, schema) do
+    %{"pending_id" => pending_id, "schema_name" => schema}
     |> PendingTimeoutWorker.new(schedule_in: @pending_timeout_seconds)
     |> Oban.insert()
   end

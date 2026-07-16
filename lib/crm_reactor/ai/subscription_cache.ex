@@ -77,7 +77,6 @@ defmodule CrmReactor.AI.SubscriptionCache do
 
   @impl true
   def handle_cast(:reload, state) do
-    :ets.delete_all_objects(state.table)
     load(state.table)
     {:noreply, state}
   end
@@ -90,8 +89,18 @@ defmodule CrmReactor.AI.SubscriptionCache do
         from(o in TenantWorkflowOverride, select: {o.tenant_id, o.workflow_name, o.enabled})
       )
 
-    Enum.each(overrides, fn {tenant_id, workflow_name, enabled} ->
-      :ets.insert(table, {{tenant_id, workflow_name}, enabled})
-    end)
+    new_entries =
+      Map.new(overrides, fn {tenant_id, workflow_name, enabled} ->
+        {{tenant_id, workflow_name}, enabled}
+      end)
+
+    # Remove stale keys that no longer exist in DB
+    old_keys = :ets.tab2list(table) |> Enum.map(fn {key, _} -> key end) |> MapSet.new()
+    new_keys = MapSet.new(Map.keys(new_entries))
+    stale_keys = MapSet.difference(old_keys, new_keys)
+    Enum.each(stale_keys, &:ets.delete(table, &1))
+
+    # Insert/update all current entries (atomic per key)
+    :ets.insert(table, Map.to_list(new_entries))
   end
 end

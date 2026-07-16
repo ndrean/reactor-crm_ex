@@ -9,7 +9,16 @@ defmodule CrmReactorWeb.AdminLive.Users do
 
   @impl true
   def mount(_params, _session, socket) do
-    users = Repo.all(from(u in UserMapping, order_by: [asc: u.tenant_id, asc: u.user_identifier]))
+    account_emails =
+      Repo.all(from(a in Accounts.Account, where: a.role == "user", select: a.email))
+
+    users =
+      from(u in UserMapping,
+        where: u.user_identifier not in ^account_emails,
+        order_by: [asc: u.tenant_id, asc: u.user_identifier]
+      )
+      |> Repo.all()
+
     tenants = Repo.all(from(t in Tenant, select: t.tenant_id, order_by: t.tenant_id))
     accounts = Accounts.list_user_accounts()
 
@@ -71,6 +80,9 @@ defmodule CrmReactorWeb.AdminLive.Users do
               <button phx-click="toggle_suspend" phx-value-id={acct.id} style="padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;">
                 Reactivate
               </button>
+              <button phx-click="delete_account" phx-value-id={acct.id} style="padding:4px 10px;background:#7f1d1d;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;" data-confirm="Permanently delete this account and its mapping? This cannot be undone.">
+                Delete
+              </button>
             <% else %>
               <button phx-click="toggle_suspend" phx-value-id={acct.id} style="padding:4px 10px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;" data-confirm="Suspend this user? They will be logged out immediately.">
                 Suspend
@@ -81,7 +93,7 @@ defmodule CrmReactorWeb.AdminLive.Users do
       </:col>
     </.admin_table>
 
-    <h2 style="margin-top:32px;font-size:1.1rem;font-weight:600;">Telegram User Mappings</h2>
+    <h2 style="margin-top:32px;font-size:1.1rem;font-weight:600;">External User Mappings</h2>
     <.admin_form id="add-user-form" phx_submit="add_user">
       <div>
         <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Tenant</label>
@@ -174,6 +186,21 @@ defmodule CrmReactorWeb.AdminLive.Users do
     end
   end
 
+  def handle_event("delete_account", %{"id" => id}, socket) do
+    account = Accounts.get_account!(id)
+
+    case Accounts.delete_account(account) do
+      {:ok, _} ->
+        {:noreply,
+         socket
+         |> stream_delete(:accounts, account)
+         |> put_flash(:info, "Account #{account.email} deleted.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete account.")}
+    end
+  end
+
   @impl true
   def handle_event("add_user", %{"tenant_id" => tid, "user_identifier" => uid} = params, socket) do
     user_email = if(params["user_email"] != "", do: params["user_email"])
@@ -188,24 +215,7 @@ defmodule CrmReactorWeb.AdminLive.Users do
          )}
 
       :ok ->
-        attrs = %{tenant_id: tid, user_identifier: uid, user_email: user_email}
-
-        case %UserMapping{} |> UserMapping.changeset(attrs) |> Repo.insert() do
-          {:ok, user} ->
-            TenantCache.reload()
-
-            {:noreply,
-             socket
-             |> stream_insert(:users, user)
-             |> put_flash(:info, "User #{uid} added to #{tid}")}
-
-          {:error, changeset} ->
-            msg =
-              Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
-              |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
-
-            {:noreply, put_flash(socket, :error, msg)}
-        end
+        insert_user_mapping(socket, tid, uid, user_email)
     end
   end
 
@@ -218,5 +228,26 @@ defmodule CrmReactorWeb.AdminLive.Users do
      socket
      |> stream_delete(:users, mapping)
      |> put_flash(:info, "Mapping for #{mapping.user_identifier} removed.")}
+  end
+
+  defp insert_user_mapping(socket, tid, uid, user_email) do
+    attrs = %{tenant_id: tid, user_identifier: uid, user_email: user_email}
+
+    case %UserMapping{} |> UserMapping.changeset(attrs) |> Repo.insert() do
+      {:ok, user} ->
+        TenantCache.reload()
+
+        {:noreply,
+         socket
+         |> stream_insert(:users, user)
+         |> put_flash(:info, "User #{uid} added to #{tid}")}
+
+      {:error, changeset} ->
+        msg =
+          Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
+          |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
+
+        {:noreply, put_flash(socket, :error, msg)}
+    end
   end
 end

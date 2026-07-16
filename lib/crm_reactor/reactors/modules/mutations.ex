@@ -5,6 +5,7 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
   alias CrmReactor.Reactors.Modules.DataExport
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.{Tenant, UserMapping}
+  alias CrmReactor.Workers.AppointmentReminderWorker
   import Ecto.Query
 
   require Logger
@@ -36,6 +37,14 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
     case find_pending_log_all_schemas(pending_id) do
       nil -> {:error, :pending_not_found}
       log -> dispatch_confirm(log, log.schema, decision)
+    end
+  end
+
+  @doc "System-only confirm scoped to a known schema (avoids scanning all tenants)."
+  def confirm_system(pending_id, decision, schema) when is_binary(schema) do
+    case find_pending_in_schema(pending_id, schema) do
+      nil -> {:error, :pending_not_found}
+      log -> dispatch_confirm(log, schema, decision)
     end
   end
 
@@ -192,17 +201,7 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
        ) do
     Repo.transaction(fn ->
       todo = Repo.get!(Todo, params["todo_id"], prefix: schema)
-
-      updates =
-        params
-        |> Map.drop(["todo_id", "subject"])
-        |> then(fn m ->
-          case Map.pop(m, "new_subject") do
-            {nil, m} -> m
-            {val, m} -> Map.put(m, "subject", val)
-          end
-        end)
-
+      updates = prepare_todo_updates(params)
       todo |> Todo.changeset(updates) |> Repo.update!(prefix: schema)
       finalize_log!(log, schema, "Tâche modifiée avec succès.")
     end)
@@ -235,77 +234,36 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
          %{module: "appointments", action: "cancel", proposed_params: params} = log,
          schema
        ) do
-    Repo.transaction(fn ->
-      todo = Repo.get!(Todo, params["todo_id"], prefix: schema)
-      todo |> Ecto.Changeset.change(done: true) |> Repo.update!(prefix: schema)
-      if todo.reminder_job_id, do: Oban.cancel_job(todo.reminder_job_id)
-      finalize_log!(log, schema, "Rendez-vous annulé : #{todo.subject}")
-    end)
-    |> unwrap_transaction(log)
+    result =
+      Repo.transaction(fn ->
+        todo = Repo.get!(Todo, params["todo_id"], prefix: schema)
+        todo |> Ecto.Changeset.change(done: true) |> Repo.update!(prefix: schema)
+        output = "Rendez-vous annulé : #{todo.subject}"
+        finalize_log!(log, schema, output)
+        %{reminder_job_id: todo.reminder_job_id, output: output}
+      end)
+
+    case result do
+      {:ok, %{reminder_job_id: job_id, output: output}} ->
+        if job_id, do: Oban.cancel_job(job_id)
+        {:ok, %{output: output, action: log.action}}
+
+      error ->
+        unwrap_transaction(error, log)
+    end
   end
 
   defp execute_mutation(
          %{module: "appointments", action: "reschedule", proposed_params: params} = log,
          schema
        ) do
-    Repo.transaction(fn ->
-      todo = Repo.get!(Todo, params["todo_id"], prefix: schema)
+    case parse_reschedule_datetime(params) do
+      {:error, :invalid} ->
+        complete_log(log, schema, "Erreur : date/heure invalide pour la reprogrammation.")
 
-      # Cancel old reminder
-      if params["old_reminder_job_id"], do: Oban.cancel_job(params["old_reminder_job_id"])
-
-      # Parse new datetime
-      new_date = params["new_date"] || params["date"]
-      new_time = params["new_time"] || params["time"]
-
-      time_str =
-        if is_binary(new_time) && String.length(new_time) == 5,
-          do: new_time <> ":00",
-          else: new_time
-
-      with {:ok, date} <- Date.from_iso8601(new_date || ""),
-           {:ok, time} <- Time.from_iso8601(time_str || "") do
-        new_starts_at = DateTime.new!(date, time, "Etc/UTC")
-        reminder_minutes = todo.reminder_minutes || 30
-        new_ends_at = DateTime.add(new_starts_at, 3600, :second)
-
-        # Schedule new reminder
-        scheduled_at = DateTime.add(new_starts_at, -reminder_minutes * 60, :second)
-
-        new_job_id =
-          if DateTime.compare(scheduled_at, DateTime.utc_now()) == :gt do
-            {:ok, job} =
-              %{
-                "todo_id" => todo.id,
-                "tenant_schema" => schema,
-                "channel" => "http",
-                "user_id" => todo.created_by,
-                "subject" => todo.subject
-              }
-              |> CrmReactor.Workers.AppointmentReminderWorker.new(scheduled_at: scheduled_at)
-              |> Oban.insert()
-
-            job.id
-          else
-            nil
-          end
-
-        todo
-        |> Ecto.Changeset.change(
-          starts_at: new_starts_at,
-          ends_at: new_ends_at,
-          reminder_job_id: new_job_id
-        )
-        |> Repo.update!(prefix: schema)
-
-        date_str = Calendar.strftime(new_starts_at, "%d/%m/%Y à %Hh%M")
-        finalize_log!(log, schema, "Rendez-vous reprogrammé au #{date_str}")
-      else
-        _ ->
-          finalize_log!(log, schema, "Erreur : date/heure invalide pour la reprogrammation.")
-      end
-    end)
-    |> unwrap_transaction(log)
+      {:ok, new_starts_at, new_ends_at} ->
+        do_reschedule(log, schema, params, new_starts_at, new_ends_at)
+    end
   end
 
   defp execute_mutation(log, schema) do
@@ -344,6 +302,94 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
   defp unwrap_transaction({:error, reason}, log) do
     Logger.warning("Mutation failed for log #{log.id}: #{inspect(reason)}")
     {:ok, %{output: "Erreur lors de l'opération. Veuillez réessayer.", action: log.action}}
+  end
+
+  defp prepare_todo_updates(params) do
+    params
+    |> Map.drop(["todo_id", "subject"])
+    |> then(fn m ->
+      case Map.pop(m, "new_subject") do
+        {nil, m} -> m
+        {val, m} -> Map.put(m, "subject", val)
+      end
+    end)
+  end
+
+  defp parse_reschedule_datetime(params) do
+    new_date = params["new_date"] || params["date"]
+    new_time = params["new_time"] || params["time"]
+
+    time_str =
+      if is_binary(new_time) && String.length(new_time) == 5,
+        do: new_time <> ":00",
+        else: new_time
+
+    with {:ok, date} <- Date.from_iso8601(new_date || ""),
+         {:ok, time} <- Time.from_iso8601(time_str || "") do
+      starts_at = DateTime.new!(date, time, "Etc/UTC")
+      {:ok, starts_at, DateTime.add(starts_at, 3600, :second)}
+    else
+      _ -> {:error, :invalid}
+    end
+  end
+
+  defp do_reschedule(log, schema, params, new_starts_at, new_ends_at) do
+    date_str = Calendar.strftime(new_starts_at, "%d/%m/%Y à %Hh%M")
+
+    result =
+      Repo.transaction(fn ->
+        todo = Repo.get!(Todo, params["todo_id"], prefix: schema)
+
+        todo
+        |> Ecto.Changeset.change(
+          starts_at: new_starts_at,
+          ends_at: new_ends_at,
+          reminder_job_id: nil
+        )
+        |> Repo.update!(prefix: schema)
+
+        finalize_log!(log, schema, "Rendez-vous reprogrammé au #{date_str}")
+        %{todo: todo, reminder_minutes: todo.reminder_minutes || 30}
+      end)
+
+    case result do
+      {:ok, %{todo: todo, reminder_minutes: reminder_minutes}} ->
+        if params["old_reminder_job_id"], do: Oban.cancel_job(params["old_reminder_job_id"])
+
+        new_job_id = schedule_reschedule_reminder(todo, new_starts_at, reminder_minutes, schema)
+
+        if new_job_id do
+          Repo.get!(Todo, todo.id, prefix: schema)
+          |> Ecto.Changeset.change(reminder_job_id: new_job_id)
+          |> Repo.update!(prefix: schema)
+        end
+
+        {:ok, %{output: "Rendez-vous reprogrammé au #{date_str}", action: log.action}}
+
+      error ->
+        unwrap_transaction(error, log)
+    end
+  end
+
+  defp schedule_reschedule_reminder(todo, new_starts_at, reminder_minutes, schema) do
+    scheduled_at = DateTime.add(new_starts_at, -reminder_minutes * 60, :second)
+
+    if DateTime.compare(scheduled_at, DateTime.utc_now()) == :gt do
+      {:ok, job} =
+        %{
+          "todo_id" => todo.id,
+          "tenant_schema" => schema,
+          "channel" => "http",
+          "user_id" => todo.created_by,
+          "subject" => todo.subject
+        }
+        |> AppointmentReminderWorker.new(scheduled_at: scheduled_at)
+        |> Oban.insert()
+
+      job.id
+    else
+      nil
+    end
   end
 
   defp workflow_modules do

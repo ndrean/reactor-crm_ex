@@ -45,6 +45,9 @@ defmodule CrmReactorWeb.ConnCase do
     |> Plug.Conn.put_session(:account_token, token)
   end
 
+  alias CrmReactor.Accounts.Account
+  alias CrmReactor.Repo
+
   @doc "Creates a user account for testing (no password — already confirmed)."
   def register_and_log_in_user(conn, attrs \\ %{}) do
     tenant_id = attrs[:tenant_id] || "test_tenant"
@@ -53,23 +56,51 @@ defmodule CrmReactorWeb.ConnCase do
     role = attrs[:role] || "user"
 
     {:ok, account} =
-      %CrmReactor.Accounts.Account{}
-      |> CrmReactor.Accounts.Account.registration_changeset(%{
+      %Account{}
+      |> Account.registration_changeset(%{
         email: email,
         password: "password1234",
         role: role,
         tenant_id: tenant_id
       })
-      |> CrmReactor.Repo.insert()
+      |> Repo.insert()
 
     # Force confirm
     account
     |> Ecto.Changeset.change(%{confirmed_at: DateTime.utc_now() |> DateTime.truncate(:second)})
-    |> CrmReactor.Repo.update!()
+    |> Repo.update!()
 
-    account = CrmReactor.Repo.get!(CrmReactor.Accounts.Account, account.id)
+    account = Repo.get!(Account, account.id)
 
     conn = log_in_account(conn, account)
     %{conn: conn, account: account}
+  end
+
+  @doc "Creates an admin account for testing (confirmed, role=admin)."
+  def register_and_log_in_admin(conn, attrs \\ %{}) do
+    register_and_log_in_user(conn, Map.merge(%{role: "admin"}, attrs))
+  end
+
+  @doc "Creates a confirmed account without logging in."
+  def create_account(attrs \\ %{}) do
+    tenant_id = attrs[:tenant_id] || "test_tenant"
+    email = attrs[:email] || "user_#{System.unique_integer([:positive])}@test.com"
+    role = attrs[:role] || "user"
+
+    {:ok, account} =
+      %Account{}
+      |> Account.registration_changeset(%{
+        email: email,
+        password: attrs[:password] || "password1234",
+        role: role,
+        tenant_id: tenant_id
+      })
+      |> Repo.insert()
+
+    account
+    |> Ecto.Changeset.change(%{confirmed_at: DateTime.utc_now() |> DateTime.truncate(:second)})
+    |> Repo.update!()
+
+    Repo.get!(Account, account.id)
   end
 end

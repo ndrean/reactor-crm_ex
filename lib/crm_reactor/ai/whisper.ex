@@ -6,7 +6,8 @@ defmodule CrmReactor.AI.Whisper do
   def transcribe(audio_url) do
     provider = Application.get_env(:crm_reactor, :whisper_provider, :local)
 
-    with {:ok, %{body: audio_data}} <- Req.get(audio_url, receive_timeout: 15_000) do
+    with {:ok, %{status: 200, body: audio_data}} <-
+           Req.get(audio_url, receive_timeout: 15_000, finch: CrmReactor.Finch) do
       case provider do
         :mistral -> transcribe_mistral(audio_data)
         _ -> transcribe_local(audio_data)
@@ -25,7 +26,8 @@ defmodule CrmReactor.AI.Whisper do
              language: "fr"
            ],
            headers: [{"authorization", "Bearer #{api_key}"}],
-           receive_timeout: 30_000
+           receive_timeout: 30_000,
+           finch: CrmReactor.Finch
          ) do
       {:ok, %{status: 200, body: body}} ->
         Telemetry.transcribe_stop(start_time, %{model: "voxtral-mini-latest", provider: :mistral})
@@ -49,7 +51,8 @@ defmodule CrmReactor.AI.Whisper do
              model: "small",
              language: "fr"
            ],
-           receive_timeout: 30_000
+           receive_timeout: 30_000,
+           finch: CrmReactor.Finch
          ) do
       {:ok, %{status: 200, body: body}} ->
         Telemetry.transcribe_stop(start_time, %{model: "whisper-small", provider: :local})

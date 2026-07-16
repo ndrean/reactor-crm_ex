@@ -66,35 +66,47 @@ defmodule CrmReactorWeb.AdminLive.Dashboard do
   end
 
   defp load_recent_logs(limit) do
-    tenants = Repo.all(from(t in Tenant, select: t.schema_name))
+    schemas = Repo.all(from(t in Tenant, select: t.schema_name))
 
-    tenants
-    |> Enum.flat_map(fn schema ->
-      try do
-        Repo.all(
-          from(l in {"execution_logs", CrmReactor.CRM.ExecutionLog},
-            prefix: ^schema,
-            order_by: [desc: l.logged_at],
-            limit: ^limit,
-            select: %{
-              id: l.id,
-              triggered_by: l.triggered_by,
-              module: l.module,
-              action: l.action,
-              status: l.status,
-              logged_at: l.logged_at
-            }
-          )
-        )
-        |> Enum.map(fn log ->
-          log |> Map.put(:schema, schema) |> Map.put(:id, "#{schema}-#{log.id}")
-        end)
-      rescue
-        _ -> []
-      end
+    case schemas do
+      [] ->
+        []
+
+      _ ->
+        union_sql =
+          schemas
+          |> Enum.map_join(" UNION ALL ", fn schema ->
+            safe = safe_schema(schema)
+
+            "SELECT id, triggered_by, module, action, status, logged_at, '#{safe}' AS schema_name FROM #{safe}.execution_logs"
+          end)
+
+        sql =
+          "SELECT * FROM (#{union_sql}) AS combined ORDER BY logged_at DESC NULLS LAST LIMIT $1"
+
+        case Repo.query(sql, [limit]) do
+          {:ok, %{rows: rows, columns: columns}} ->
+            parse_log_rows(rows, columns)
+
+          _ ->
+            []
+        end
+    end
+  end
+
+  defp parse_log_rows(rows, columns) do
+    columns = Enum.map(columns, &String.to_atom/1)
+
+    Enum.map(rows, fn row ->
+      log = Enum.zip(columns, row) |> Map.new()
+      log |> Map.put(:id, "#{log.schema_name}-#{log.id}") |> Map.put(:schema, log.schema_name)
     end)
-    |> Enum.sort_by(& &1.logged_at, {:desc, DateTime})
-    |> Enum.take(limit)
+  end
+
+  defp safe_schema(name) do
+    if Regex.match?(~r/^[a-z_][a-z0-9_]*$/, name),
+      do: name,
+      else: raise("invalid schema: #{name}")
   end
 
   defp format_time(nil), do: "-"

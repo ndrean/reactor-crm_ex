@@ -4,8 +4,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsIsolationTest do
 
   alias CrmReactor.CRM.ExecutionLog
   alias CrmReactor.Reactors.Modules.Mutations
-  alias CrmReactor.Repo
-  alias CrmReactor.TestFixtures
+  alias CrmReactor.{Repo, TestFixtures}
   alias CrmReactor.Tenants.Provisioner
 
   setup do

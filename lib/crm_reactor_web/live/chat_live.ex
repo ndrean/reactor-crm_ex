@@ -4,12 +4,18 @@ defmodule CrmReactorWeb.ChatLive do
   alias CrmReactor.Reactors.MasterIngest
   alias CrmReactor.Reactors.Modules.Mutations
   alias CrmReactor.Storage
+  alias CrmReactor.Tenants.TenantCache
 
   require Logger
 
   @impl true
   def mount(_params, _session, socket) do
     account = socket.assigns.current_account
+
+    # Ensure TenantCache has this email mapped — handles stale cache after
+    # deployments or multi-container setups where the admin panel reload
+    # only reached a different process.
+    ensure_cache_entry(account.email)
 
     {:ok,
      socket
@@ -171,7 +177,29 @@ defmodule CrmReactorWeb.ChatLive do
     end
   end
 
+  # Map extensions to ExImageInfo format atoms
+  @ext_to_format %{
+    ".jpg" => :jpeg,
+    ".jpeg" => :jpeg,
+    ".png" => :png,
+    ".gif" => :gif
+  }
+
   defp store_attachment(schema, entry, content) do
+    ext = entry.client_name |> Path.extname() |> String.downcase()
+
+    if expected = @ext_to_format[ext] do
+      if ExImageInfo.seems?(content, expected) do
+        do_store(schema, entry, content)
+      else
+        {:ok, nil}
+      end
+    else
+      do_store(schema, entry, content)
+    end
+  end
+
+  defp do_store(schema, entry, content) do
     case Storage.put(schema, entry.client_name, content) do
       {:ok, key} ->
         {:ok,
@@ -184,6 +212,13 @@ defmodule CrmReactorWeb.ChatLive do
 
       {:error, _} ->
         {:ok, nil}
+    end
+  end
+
+  defp ensure_cache_entry(email) do
+    case TenantCache.lookup(email) do
+      {:ok, _} -> :ok
+      {:error, :unknown_user} -> TenantCache.reload()
     end
   end
 

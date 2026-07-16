@@ -16,7 +16,7 @@ defmodule CrmReactor.Workers.RetentionWorker do
 
     schemas = Repo.all(Tenant) |> Enum.map(& &1.schema_name)
 
-    for schema <- schemas do
+    for schema <- schemas, safe_schema?(schema) do
       %{num_rows: count} =
         Repo.query!(
           """
@@ -40,4 +40,6 @@ defmodule CrmReactor.Workers.RetentionWorker do
 
     :ok
   end
+
+  defp safe_schema?(name), do: Regex.match?(~r/\A[a-z_][a-z0-9_]*\z/, name)
 end

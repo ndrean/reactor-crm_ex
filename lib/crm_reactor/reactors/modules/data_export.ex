@@ -20,7 +20,7 @@ defmodule CrmReactor.Reactors.Modules.DataExport do
       })
       |> Repo.update!(prefix: schema)
 
-    %{"pending_id" => log.pending_id}
+    %{"pending_id" => log.pending_id, "schema_name" => schema}
     |> PendingTimeoutWorker.new(schedule_in: @pending_timeout_seconds)
     |> Oban.insert()
 

@@ -24,6 +24,14 @@ defmodule CrmReactorWeb.Router do
     plug CrmReactorWeb.Plugs.RateLimiter
   end
 
+  pipeline :login_rate_limited do
+    plug CrmReactorWeb.Plugs.RateLimiter, max: 5, window_ms: 60_000, prefix: "login"
+  end
+
+  pipeline :admin_api_rate_limited do
+    plug CrmReactorWeb.Plugs.RateLimiter, max: 60, window_ms: 60_000, prefix: "admin_api"
+  end
+
   # Public: login page (redirects if already logged in)
   scope "/", CrmReactorWeb do
     pipe_through [:browser, :redirect_if_authenticated]
@@ -36,9 +44,14 @@ defmodule CrmReactorWeb.Router do
 
   # Public: session create/delete (POST endpoints for phx-trigger-action)
   scope "/", CrmReactorWeb do
-    pipe_through :browser
+    pipe_through [:browser, :login_rate_limited]
 
     post "/login", AccountSessionController, :create
+  end
+
+  scope "/", CrmReactorWeb do
+    pipe_through :browser
+
     delete "/logout", AccountSessionController, :delete
     get "/logout", AccountSessionController, :delete
   end
@@ -84,7 +97,6 @@ defmodule CrmReactorWeb.Router do
       live "/subscriptions", AdminLive.Subscriptions, :index
       live "/logs", AdminLive.Logs, :index
       live "/setup", AdminLive.TelegramSetup, :index
-
     end
   end
 
@@ -92,6 +104,11 @@ defmodule CrmReactorWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :check
+  end
+
+  scope "/api", CrmReactorWeb do
+    pipe_through [:api, :admin_api_rate_limited]
+
     post "/admin/provision", AdminController, :provision
     post "/admin/toggle", AdminController, :toggle
     put "/admin/subscriptions", AdminController, :set_subscription
@@ -118,7 +135,7 @@ defmodule CrmReactorWeb.Router do
 
   get "/metrics", CrmReactorWeb.MetricsController, :index
 
-  if Mix.env() == :dev do
+  # if Mix.env() == :dev do
     forward "/mailbox", Plug.Swoosh.MailboxPreview
-  end
+  # end
 end

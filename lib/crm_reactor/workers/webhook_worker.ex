@@ -17,7 +17,8 @@ defmodule CrmReactor.Workers.WebhookWorker do
              {"content-type", "application/json"},
              {"x-crm-signature", "sha256=#{signature}"}
            ],
-           receive_timeout: 10_000
+           receive_timeout: 10_000,
+           finch: CrmReactor.Finch
          ) do
       {:ok, %{status: s}} when s in 200..299 -> :ok
       {:ok, %{status: s}} -> {:error, "HTTP #{s}"}

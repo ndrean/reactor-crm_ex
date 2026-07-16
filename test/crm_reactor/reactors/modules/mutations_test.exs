@@ -207,4 +207,168 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
     assert result.output =~ "email" or result.output =~ "envoyées"
     assert result.action == "dump"
   end
+
+  # ── Fanout with unknown module ──────────────────────────────────────────
+
+  test "fanout with unknown module returns 'Module inconnu'", %{log: log, schema: schema} do
+    pending =
+      put_pending(log, schema, "contacts", "create", %{
+        "type" => "fanout",
+        "workflow" => "nonexistent_module",
+        "action" => "create",
+        "items" => ["item1"],
+        "map_param" => "name",
+        "params" => %{},
+        "routing_path" => "deterministic"
+      })
+
+    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    assert result.output =~ "Module inconnu"
+  end
+
+  # ── Appointments cancel with nil reminder_job_id ────────────────────────
+
+  test "appointments cancel works when reminder_job_id is nil", %{
+    log: log,
+    schema: schema,
+    user_id: user_id
+  } do
+    # Insert a todo with starts_at but no reminder_job_id
+    tomorrow = Date.add(Date.utc_today(), 1)
+    starts_at = DateTime.new!(tomorrow, ~T[10:00:00], "Etc/UTC")
+    ends_at = DateTime.add(starts_at, 3600, :second)
+
+    {:ok, %{rows: [[todo_id]]}} =
+      Repo.query(
+        "INSERT INTO #{schema}.todos (subject, created_by, starts_at, ends_at) VALUES ($1, $2, $3, $4) RETURNING id",
+        ["RDV sans rappel", user_id, starts_at, ends_at]
+      )
+
+    pending =
+      put_pending(log, schema, "appointments", "cancel", %{
+        "todo_id" => todo_id
+      })
+
+    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    assert result.output =~ "annulé"
+  end
+
+  # ── Reschedule with invalid date ────────────────────────────────────────
+
+  test "appointments reschedule with invalid date returns error", %{
+    log: log,
+    schema: schema,
+    user_id: user_id
+  } do
+    todo = first_todo(schema, user_id)
+
+    pending =
+      put_pending(log, schema, "appointments", "reschedule", %{
+        "todo_id" => todo.id,
+        "new_date" => "not-a-date",
+        "new_time" => "bad"
+      })
+
+    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    assert result.output =~ "invalide"
+  end
+
+  # ── valid_email? edge cases ─────────────────────────────────────────────
+
+  test "export_email with missing @ returns invalid_email", %{log: log, schema: schema} do
+    pending =
+      put_pending(log, schema, "data", "dump", %{
+        "type" => "export_email"
+      })
+
+    assert {:error, :invalid_email} = Mutations.confirm(pending.pending_id, "not-an-email")
+  end
+
+  test "export_email with whitespace returns invalid_email", %{log: log, schema: schema} do
+    pending =
+      put_pending(log, schema, "data", "dump", %{
+        "type" => "export_email"
+      })
+
+    assert {:error, :invalid_email} = Mutations.confirm(pending.pending_id, "bad @email .com")
+  end
+
+  # ── Expenses: delete ────────────────────────────────────────────────────
+
+  test "expenses delete confirm removes the expense", %{
+    log: log,
+    schema: schema,
+    user_id: user_id
+  } do
+    alias CrmReactor.CRM.Expense
+
+    {:ok, expense} =
+      %Expense{}
+      |> Expense.changeset(%{
+        description: "Taxi",
+        amount: Decimal.new("25.50"),
+        expense_date: Date.utc_today(),
+        created_by: user_id
+      })
+      |> Repo.insert(prefix: schema)
+
+    pending =
+      put_pending(log, schema, "expenses", "delete", %{"expense_id" => expense.id})
+
+    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    assert result.output =~ "supprimée"
+    assert Repo.get(Expense, expense.id, prefix: schema) == nil
+  end
+
+  # ── Reschedule confirm with valid date ──────────────────────────────────
+
+  test "appointments reschedule confirm with valid date updates starts_at", %{
+    log: log,
+    schema: schema,
+    user_id: user_id
+  } do
+    tomorrow = Date.add(Date.utc_today(), 1)
+    starts_at = DateTime.new!(tomorrow, ~T[10:00:00], "Etc/UTC")
+    ends_at = DateTime.add(starts_at, 3600, :second)
+
+    {:ok, %{rows: [[todo_id]]}} =
+      Repo.query(
+        "INSERT INTO #{schema}.todos (subject, created_by, starts_at, ends_at) VALUES ($1, $2, $3, $4) RETURNING id",
+        ["RDV reschedule", user_id, starts_at, ends_at]
+      )
+
+    new_date = Date.add(Date.utc_today(), 7) |> Date.to_iso8601()
+
+    pending =
+      put_pending(log, schema, "appointments", "reschedule", %{
+        "todo_id" => todo_id,
+        "new_date" => new_date,
+        "new_time" => "15:00"
+      })
+
+    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    assert result.output =~ "reprogrammé"
+
+    updated = Repo.get!(Todo, todo_id, prefix: schema)
+    assert DateTime.to_date(updated.starts_at) == Date.add(Date.utc_today(), 7)
+  end
+
+  # ── confirm_system/3 ────────────────────────────────────────────────────
+
+  test "confirm_system/3 confirms without user authorization", %{
+    log: log,
+    schema: schema
+  } do
+    contact = first_contact(schema)
+    pending = put_pending(log, schema, "contacts", "delete", %{"contact_id" => contact.id})
+
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
+    assert result.output =~ "supprimé"
+    assert Repo.get(Contact, contact.id, prefix: schema) == nil
+  end
+
+  test "confirm_system/3 returns error for unknown pending_id", %{schema: schema} do
+    assert {:error, :pending_not_found} =
+             Mutations.confirm_system(Ecto.UUID.generate(), "confirm", schema)
+  end
 end

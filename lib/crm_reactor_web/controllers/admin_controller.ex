@@ -51,7 +51,9 @@ defmodule CrmReactorWeb.AdminController do
         json(conn, %{success: true, tenant_id: tid, workflow_name: wf, enabled: enabled})
 
       {:error, reason} ->
-        conn |> put_status(422) |> json(%{error: inspect(reason)})
+        require Logger
+        Logger.error("Subscription update failed: #{inspect(reason)}")
+        conn |> put_status(422) |> json(%{error: "Failed to update subscription"})
     end
   end
 
@@ -114,7 +116,9 @@ defmodule CrmReactorWeb.AdminController do
         conn |> put_status(404) |> json(%{error: "Data subject not found"})
 
       {:error, reason} ->
-        conn |> put_status(500) |> json(%{error: inspect(reason)})
+        require Logger
+        Logger.error("Email export failed: #{inspect(reason)}")
+        conn |> put_status(500) |> json(%{error: "Internal server error"})
     end
   end
 
@@ -147,9 +151,17 @@ defmodule CrmReactorWeb.AdminController do
     expected = Application.get_env(:crm_reactor, :admin_token)
 
     case get_req_header(conn, "authorization") do
-      ["bearer " <> token] when token == expected -> conn
-      ["Bearer " <> token] when token == expected -> conn
+      ["bearer " <> token] -> secure_check(conn, token, expected)
+      ["Bearer " <> token] -> secure_check(conn, token, expected)
       _ -> conn |> put_status(401) |> json(%{error: "Unauthorized"}) |> halt()
+    end
+  end
+
+  defp secure_check(conn, token, expected) do
+    if Plug.Crypto.secure_compare(token, expected) do
+      conn
+    else
+      conn |> put_status(401) |> json(%{error: "Unauthorized"}) |> halt()
     end
   end
 

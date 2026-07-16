@@ -76,30 +76,33 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
             "P1 in=#{pass1_usage.prompt_tokens} out=#{pass1_usage.completion_tokens}"
         )
 
-        case classifier().classify(text, scoped_registry, routing_hint, context) do
-          {:ok, result} ->
-            pass2_workflow =
-              result.steps |> List.first(%{}) |> Map.get(:workflow)
-
-            Logger.debug(
-              "Pass 2: #{pass2_workflow} | " <>
-                "P2 in=#{result[:prompt_tokens]} out=#{result[:completion_tokens]} | " <>
-                "total=#{(pass1_usage.total_tokens || 0) + (result[:total_tokens] || 0)}"
-            )
-
-            {:ok, sum_usage(result, pass1_usage)}
-
-          {:error, reason} ->
-            Logger.warning("Pass 2 failed: #{inspect(reason)}, retrying with full registry")
-
-            with {:ok, result} <- classifier().classify(text, registry, routing_hint, context) do
-              {:ok, sum_usage(result, pass1_usage)}
-            end
-        end
+        run_pass2(text, scoped_registry, registry, routing_hint, context, pass1_usage)
 
       {:error, reason} ->
         Logger.warning("Pass 1 failed: #{inspect(reason)}, falling back to single-pass")
         classifier().classify(text, registry, nil, context)
+    end
+  end
+
+  defp run_pass2(text, scoped_registry, full_registry, routing_hint, context, pass1_usage) do
+    case classifier().classify(text, scoped_registry, routing_hint, context) do
+      {:ok, result} ->
+        pass2_workflow = result.steps |> List.first(%{}) |> Map.get(:workflow)
+
+        Logger.debug(
+          "Pass 2: #{pass2_workflow} | " <>
+            "P2 in=#{result[:prompt_tokens]} out=#{result[:completion_tokens]} | " <>
+            "total=#{(pass1_usage.total_tokens || 0) + (result[:total_tokens] || 0)}"
+        )
+
+        {:ok, sum_usage(result, pass1_usage)}
+
+      {:error, reason} ->
+        Logger.warning("Pass 2 failed: #{inspect(reason)}, retrying with full registry")
+
+        with {:ok, result} <- classifier().classify(text, full_registry, routing_hint, context) do
+          {:ok, sum_usage(result, pass1_usage)}
+        end
     end
   end
 

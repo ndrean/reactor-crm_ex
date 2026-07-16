@@ -82,50 +82,59 @@ defmodule CrmReactorWeb.AdminLive.Logs do
   end
 
   defp load_logs(tenant_filter, status_filter) do
-    tenants =
+    schemas =
       if tenant_filter do
-        [%{schema_name: "customer_#{tenant_filter}"}]
+        ["customer_#{tenant_filter}"]
       else
-        Repo.all(from(t in Tenant, select: %{schema_name: t.schema_name}))
+        Repo.all(from(t in Tenant, select: t.schema_name))
       end
 
-    tenants
-    |> Enum.flat_map(fn %{schema_name: schema} ->
-      try do
-        query =
-          from(l in {"execution_logs", CrmReactor.CRM.ExecutionLog},
-            prefix: ^schema,
-            order_by: [desc: l.logged_at],
-            limit: 50,
-            select: %{
-              id: l.id,
-              triggered_by: l.triggered_by,
-              raw_input: l.raw_input,
-              module: l.module,
-              action: l.action,
-              status: l.status,
-              output: l.output,
-              logged_at: l.logged_at
-            }
-          )
+    case schemas do
+      [] ->
+        []
 
-        query =
-          if status_filter do
-            from(l in query, where: l.status == ^status_filter)
-          else
-            query
-          end
+      _ ->
+        {where_clause, _, _} = build_where(status_filter, 2)
 
-        Repo.all(query)
-        |> Enum.map(fn log ->
-          log |> Map.put(:schema, schema) |> Map.put(:id, "#{schema}-#{log.id}")
-        end)
-      rescue
-        _ -> []
-      end
+        union_sql =
+          schemas
+          |> Enum.map_join(" UNION ALL ", fn schema ->
+            safe = safe_schema(schema)
+
+            "SELECT id, triggered_by, raw_input, module, action, status, output, logged_at, '#{safe}' AS schema_name FROM #{safe}.execution_logs#{where_clause}"
+          end)
+
+        sql =
+          "SELECT * FROM (#{union_sql}) AS combined ORDER BY logged_at DESC NULLS LAST LIMIT $1"
+
+        query_params = [50] ++ if(status_filter, do: [status_filter], else: [])
+
+        case Repo.query(sql, query_params) do
+          {:ok, %{rows: rows, columns: columns}} ->
+            parse_log_rows(rows, columns)
+
+          _ ->
+            []
+        end
+    end
+  end
+
+  defp parse_log_rows(rows, columns) do
+    columns = Enum.map(columns, &String.to_atom/1)
+
+    Enum.map(rows, fn row ->
+      log = Enum.zip(columns, row) |> Map.new()
+      log |> Map.put(:id, "#{log.schema_name}-#{log.id}") |> Map.put(:schema, log.schema_name)
     end)
-    |> Enum.sort_by(& &1.logged_at, {:desc, DateTime})
-    |> Enum.take(50)
+  end
+
+  defp build_where(nil, _idx), do: {"", [], 2}
+  defp build_where(status, idx), do: {" WHERE status = $#{idx}", [status], idx + 1}
+
+  defp safe_schema(name) do
+    if Regex.match?(~r/^[a-z_][a-z0-9_]*$/, name),
+      do: name,
+      else: raise("invalid schema: #{name}")
   end
 
   defp format_time(nil), do: "-"

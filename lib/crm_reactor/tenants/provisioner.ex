@@ -6,10 +6,10 @@ defmodule CrmReactor.Tenants.Provisioner do
   alias CrmReactor.Tenants.{Tenant, TenantCache, UserMapping}
 
   def provision(tenant_id, company_name, user_identifier \\ nil, opts \\ []) do
-    unless Regex.match?(~r/^[a-z0-9_]+$/, tenant_id) do
-      {:error, :invalid_tenant_id}
-    else
+    if Regex.match?(~r/^[a-z0-9_]+$/, tenant_id) do
       do_provision(tenant_id, company_name, user_identifier, opts)
+    else
+      {:error, :invalid_tenant_id}
     end
   end
 
@@ -34,16 +34,7 @@ defmodule CrmReactor.Tenants.Provisioner do
       create_tenant_schema(schema_name)
 
       if user_identifier do
-        case %UserMapping{}
-             |> UserMapping.changeset(%{
-               user_identifier: user_identifier,
-               tenant_id: tenant_id,
-               user_email: user_email
-             })
-             |> Repo.insert() do
-          {:ok, _mapping} -> :ok
-          {:error, changeset} -> Repo.rollback(changeset)
-        end
+        insert_user_mapping!(tenant_id, user_identifier, user_email)
       end
 
       tenant
@@ -192,6 +183,40 @@ defmodule CrmReactor.Tenants.Provisioner do
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
     """)
+
+    create_indexes(name)
+  end
+
+  defp create_indexes(name) do
+    indexes = [
+      "CREATE INDEX IF NOT EXISTS idx_contacts_email_hash ON #{name}.contacts (email_hash)",
+      "CREATE INDEX IF NOT EXISTS idx_contacts_phone_hash ON #{name}.contacts (phone_hash)",
+      "CREATE INDEX IF NOT EXISTS idx_todos_contact_id ON #{name}.todos (contact_id)",
+      "CREATE INDEX IF NOT EXISTS idx_todos_due_date ON #{name}.todos (due_date)",
+      "CREATE INDEX IF NOT EXISTS idx_todos_starts_at ON #{name}.todos (starts_at)",
+      "CREATE INDEX IF NOT EXISTS idx_expenses_contact_id ON #{name}.expenses (contact_id)",
+      "CREATE INDEX IF NOT EXISTS idx_expenses_expense_date ON #{name}.expenses (expense_date)",
+      "CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON #{name}.expenses (created_by)",
+      "CREATE INDEX IF NOT EXISTS idx_execution_logs_logged_at ON #{name}.execution_logs (logged_at)",
+      "CREATE INDEX IF NOT EXISTS idx_execution_logs_pending_id ON #{name}.execution_logs (pending_id)",
+      "CREATE INDEX IF NOT EXISTS idx_execution_logs_triggered_by ON #{name}.execution_logs (triggered_by)",
+      "CREATE INDEX IF NOT EXISTS idx_execution_attachments_log_id ON #{name}.execution_attachments (execution_log_id)"
+    ]
+
+    Enum.each(indexes, &Repo.query!/1)
+  end
+
+  defp insert_user_mapping!(tenant_id, user_identifier, user_email) do
+    case %UserMapping{}
+         |> UserMapping.changeset(%{
+           user_identifier: user_identifier,
+           tenant_id: tenant_id,
+           user_email: user_email
+         })
+         |> Repo.insert() do
+      {:ok, _mapping} -> :ok
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
   end
 
   defp safe_schema(name) do

@@ -8,6 +8,7 @@ defmodule CrmReactorWeb.Endpoint do
     store: :cookie,
     key: "_crm_reactor_key",
     signing_salt: "Ew/hSWXS",
+    encryption_salt: "k8PqR3vN",
     same_site: "Lax"
   ]
 

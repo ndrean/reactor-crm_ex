@@ -1,8 +1,14 @@
 defmodule CrmReactorWeb.CrmController do
   use CrmReactorWeb, :controller
 
+  alias CrmReactor.CRM.ExecutionLog
   alias CrmReactor.Reactors.MasterIngest
   alias CrmReactor.Reactors.Modules.Mutations
+  alias CrmReactor.Repo
+  alias CrmReactor.Tenants.TenantCache
+
+  require Logger
+  import Ecto.Query
 
   def ingest(conn, %{"user_id" => user_id, "text" => text}) do
     input = %{
@@ -23,7 +29,9 @@ defmodule CrmReactorWeb.CrmController do
 
       # coveralls-ignore-next-line
       {:error, reason} ->
-        conn |> put_status(500) |> json(%{error: inspect(reason)})
+        Logger.error("Ingest failed: #{inspect(reason)}")
+        mark_log_failed(input, reason)
+        conn |> put_status(500) |> json(%{error: "Internal server error"})
     end
   end
 
@@ -47,12 +55,31 @@ defmodule CrmReactorWeb.CrmController do
 
       # coveralls-ignore-next-line
       {:error, reason} ->
-        conn |> put_status(500) |> json(%{error: inspect(reason)})
+        Logger.error("Confirm failed: #{inspect(reason)}")
+        conn |> put_status(500) |> json(%{error: "Internal server error"})
     end
   end
 
   def confirm(conn, _params) do
     conn |> put_status(400) |> json(%{error: "pending_id, decision, and user_id required"})
+  end
+
+  defp mark_log_failed(%{job_id: job_id, user_id: user_id}, reason) do
+    error_msg =
+      case reason do
+        %{errors: [%{error: err} | _]} -> inspect(err)
+        other -> inspect(other)
+      end
+
+    with {:ok, %{schema_name: schema}} <- TenantCache.lookup(user_id),
+         %ExecutionLog{} = log <-
+           Repo.one(from(l in ExecutionLog, where: l.job_id == ^job_id), prefix: schema) do
+      log
+      |> ExecutionLog.error_changeset(%{error_message: error_msg})
+      |> Repo.update()
+    end
+  rescue
+    _ -> :ok
   end
 
   defp format_result(%{output: output, action: action} = result) do

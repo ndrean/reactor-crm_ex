@@ -37,7 +37,7 @@ config :swoosh, :api_client, false
 
 config :crm_reactor, Oban,
   repo: CrmReactor.Repo,
-  queues: [ingest: 10, mutations: 5, maintenance: 1, webhooks: 3],
+  queues: [ingest: 50, mutations: 10, maintenance: 1, webhooks: 5],
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [

@@ -521,7 +521,7 @@ defmodule CrmReactor.Reactors.Modules.TodosTest do
       user_1: user,
       marie: marie
     } do
-      # Todo with a generic subject — no "Marie" text, but linked to Marie by contact_id
+      # Generic subject — no "Marie" text, but linked to Marie by contact_id
       Repo.query!(
         "INSERT INTO #{schema}.todos (subject, due_date, created_by, contact_id) VALUES ($1, $2, $3, $4)",
         ["Réunion importante", Date.add(Date.utc_today(), 1), user, marie.id]

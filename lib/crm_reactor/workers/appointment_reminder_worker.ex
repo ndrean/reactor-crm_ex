@@ -4,6 +4,7 @@ defmodule CrmReactor.Workers.AppointmentReminderWorker do
 
   alias CrmReactor.CRM.Todo
   alias CrmReactor.Repo
+  alias CrmReactor.Workers.WebhookWorker
 
   require Logger
 
@@ -56,7 +57,7 @@ defmodule CrmReactor.Workers.AppointmentReminderWorker do
           "tenant_schema" => schema,
           "payload" => %{"type" => "reminder", "subject" => subject}
         }
-        |> CrmReactor.Workers.WebhookWorker.new()
+        |> WebhookWorker.new()
         |> Oban.insert()
 
         :ok

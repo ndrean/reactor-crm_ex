@@ -23,22 +23,26 @@ defmodule CrmReactor.Release do
           System.halt(1)
         end
 
-        case CrmReactor.Repo.get_by(CrmReactor.Accounts.Account, email: email) do
-          nil ->
-            case CrmReactor.Accounts.create_admin_account(%{email: email, password: password}) do
-              {:ok, account} -> IO.puts("Admin account created: #{account.email}")
-              {:error, cs} -> IO.puts("Failed: #{inspect(cs.errors)}")
-            end
-
-          _existing ->
-            IO.puts("Admin account #{email} already exists, skipping")
-        end
+        do_create_admin(email, password)
       end)
   end
 
   def rollback(repo, version) do
     load_app()
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
+  end
+
+  defp do_create_admin(email, password) do
+    case CrmReactor.Repo.get_by(CrmReactor.Accounts.Account, email: email) do
+      nil ->
+        case CrmReactor.Accounts.create_admin_account(%{email: email, password: password}) do
+          {:ok, account} -> IO.puts("Admin account created: #{account.email}")
+          {:error, cs} -> IO.puts("Failed: #{inspect(cs.errors)}")
+        end
+
+      _existing ->
+        IO.puts("Admin account #{email} already exists, skipping")
+    end
   end
 
   defp repos do

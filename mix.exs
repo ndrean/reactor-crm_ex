@@ -67,6 +67,7 @@ defmodule CrmReactor.MixProject do
       {:cloak, "~> 1.1"},
       {:bcrypt_elixir, "~> 3.0"},
       {:hammer, "~> 6.2"},
+      {:ex_image_info, "~> 1.0"},
       {:phoenix_live_view, "~> 1.0"},
       {:ecto_psql_extras, "~> 0.6"},
       {:phoenix_live_dashboard, "~> 0.8"},

@@ -154,6 +154,30 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
       assert result.output =~ "date et heure sont obligatoires"
     end
+
+    test "create with past date does not schedule reminder (reminder_job_id is nil)", %{
+      schema: schema,
+      user_id: user_id
+    } do
+      yesterday = Date.add(Date.utc_today(), -1) |> Date.to_iso8601()
+
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "create",
+          params: %{
+            "subject" => "Passé",
+            "date" => yesterday,
+            "time" => "09:00"
+          },
+          tenant_schema: schema,
+          user_id: user_id,
+          channel: :http
+        })
+
+      assert result.action == "create"
+      # Past appointment — reminder should not be scheduled
+      assert result.data["reminder_job_id"] == nil
+    end
   end
 
   # ── List ───────────────────────────────────────────────────────────────
@@ -207,6 +231,130 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
         })
 
       assert result.output == "Aucun rendez-vous à venir."
+    end
+
+    test "list with period=today filters to today only", %{schema: schema, user_id: user_id} do
+      # The seeded appointment is tomorrow, so "today" filter should return 0
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "list",
+          params: %{"period" => "today"},
+          tenant_schema: schema,
+          user_id: user_id
+        })
+
+      assert result.data["count"] == 0
+    end
+
+    test "list with period=week includes this week", %{schema: schema, user_id: user_id} do
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "list",
+          params: %{"period" => "week"},
+          tenant_schema: schema,
+          user_id: user_id
+        })
+
+      # The seeded appointment is tomorrow — within the week
+      assert result.data["count"] >= 1
+    end
+
+    test "list with specific date filter", %{
+      schema: schema,
+      user_id: user_id,
+      starts_at: starts_at
+    } do
+      date = DateTime.to_date(starts_at) |> Date.to_iso8601()
+
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "list",
+          params: %{"date" => date},
+          tenant_schema: schema,
+          user_id: user_id
+        })
+
+      assert result.data["count"] >= 1
+      assert result.output =~ "Réunion Marie"
+    end
+
+    test "list with due_on filter", %{schema: schema, user_id: user_id, starts_at: starts_at} do
+      date = DateTime.to_date(starts_at) |> Date.to_iso8601()
+
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "list",
+          params: %{"due_on" => date},
+          tenant_schema: schema,
+          user_id: user_id
+        })
+
+      assert result.data["count"] >= 1
+      assert result.output =~ "Réunion Marie"
+    end
+
+    test "list with due_on for wrong date returns empty", %{schema: schema, user_id: user_id} do
+      wrong_date = Date.add(Date.utc_today(), 10) |> Date.to_iso8601()
+
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "list",
+          params: %{"due_on" => wrong_date},
+          tenant_schema: schema,
+          user_id: user_id
+        })
+
+      assert result.data["count"] == 0
+    end
+
+    test "list with due_after filter", %{schema: schema, user_id: user_id} do
+      today = Date.utc_today() |> Date.to_iso8601()
+
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "list",
+          params: %{"due_after" => today},
+          tenant_schema: schema,
+          user_id: user_id
+        })
+
+      assert result.data["count"] >= 1
+    end
+
+    test "list with due_before filter (future)", %{schema: schema, user_id: user_id} do
+      next_week = Date.add(Date.utc_today(), 7) |> Date.to_iso8601()
+
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "list",
+          params: %{"due_before" => next_week},
+          tenant_schema: schema,
+          user_id: user_id
+        })
+
+      # Tomorrow's appointment should be within today..next_week
+      assert result.data["count"] >= 1
+    end
+
+    test "list with due_before + due_after combined", %{
+      schema: schema,
+      user_id: user_id,
+      starts_at: starts_at
+    } do
+      date = DateTime.to_date(starts_at)
+
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "list",
+          params: %{
+            "due_after" => Date.to_iso8601(date),
+            "due_before" => Date.to_iso8601(date)
+          },
+          tenant_schema: schema,
+          user_id: user_id
+        })
+
+      assert result.data["count"] >= 1
     end
   end
 
@@ -322,6 +470,78 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
     end
   end
 
+  # ── Multiple matches ──────────────────────────────────────────────────
+
+  describe "multiple matches" do
+    setup %{schema: schema, user_id: user_id} do
+      # Insert a second appointment with overlapping subject
+      day_after = Date.add(Date.utc_today(), 2)
+      starts_at = DateTime.new!(day_after, ~T[10:00:00], "Etc/UTC")
+      ends_at = DateTime.add(starts_at, 3600, :second)
+
+      # Use same base subject pattern so partial ILIKE matches both but neither is an exact match
+      Repo.query!(
+        "INSERT INTO #{schema}.todos (subject, created_by, starts_at, ends_at) VALUES ($1, $2, $3, $4)",
+        ["Réunion Marie Soir", user_id, starts_at, ends_at]
+      )
+
+      # Rename the original to also not be an exact match for "Réunion"
+      Repo.query!(
+        "UPDATE #{schema}.todos SET subject = 'Réunion Marie Matin' WHERE subject = 'Réunion Marie' AND starts_at IS NOT NULL",
+        []
+      )
+
+      log =
+        %ExecutionLog{}
+        |> ExecutionLog.create_changeset(%{
+          triggered_by: user_id,
+          channel: "http",
+          raw_input: "test"
+        })
+        |> Repo.insert!(prefix: schema)
+
+      %{log_id: log.id}
+    end
+
+    test "cancel with multiple matches returns ambiguity message", %{
+      schema: schema,
+      user_id: user_id,
+      log_id: log_id
+    } do
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "cancel",
+          params: %{"subject" => "Réunion"},
+          tenant_schema: schema,
+          user_id: user_id,
+          log_id: log_id
+        })
+
+      assert result.output =~ "Plusieurs"
+    end
+
+    test "reschedule with multiple matches returns ambiguity message", %{
+      schema: schema,
+      user_id: user_id,
+      log_id: log_id
+    } do
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "reschedule",
+          params: %{
+            "subject" => "Réunion",
+            "new_date" => "2026-08-01",
+            "new_time" => "10:00"
+          },
+          tenant_schema: schema,
+          user_id: user_id,
+          log_id: log_id
+        })
+
+      assert result.output =~ "Plusieurs"
+    end
+  end
+
   # ── Mutations (confirm flow) ───────────────────────────────────────────
 
   describe "mutations" do
@@ -343,7 +563,6 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       user_id: user_id,
       log_id: log_id
     } do
-      # First create the pending state
       {:ok, result} =
         Appointments.execute(%{
           action: "cancel",
@@ -355,17 +574,47 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
       assert result.action == "pending"
 
-      # Now confirm
       alias CrmReactor.Reactors.Modules.Mutations
       {:ok, confirmed} = Mutations.confirm(result.pending_id, "confirm", user_id)
       assert confirmed.output =~ "annulé"
 
-      # Verify the appointment is done
       appt =
         from(t in Todo, where: t.subject == "Réunion Marie" and not is_nil(t.starts_at))
         |> Repo.one!(prefix: schema)
 
       assert appt.done == true
+    end
+
+    test "reschedule confirm updates starts_at", %{
+      schema: schema,
+      user_id: user_id,
+      log_id: log_id
+    } do
+      {:ok, result} =
+        Appointments.execute(%{
+          action: "reschedule",
+          params: %{
+            "subject" => "Réunion Marie",
+            "new_date" => Date.add(Date.utc_today(), 5) |> Date.to_iso8601(),
+            "new_time" => "09:00"
+          },
+          tenant_schema: schema,
+          user_id: user_id,
+          log_id: log_id
+        })
+
+      assert result.action == "pending"
+
+      alias CrmReactor.Reactors.Modules.Mutations
+      {:ok, confirmed} = Mutations.confirm(result.pending_id, "confirm", user_id)
+      assert confirmed.output =~ "reprogrammé"
+
+      appt =
+        from(t in Todo, where: t.subject == "Réunion Marie" and not is_nil(t.starts_at))
+        |> Repo.one!(prefix: schema)
+
+      expected_date = Date.add(Date.utc_today(), 5)
+      assert DateTime.to_date(appt.starts_at) == expected_date
     end
   end
 

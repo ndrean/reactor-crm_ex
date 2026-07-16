@@ -11,6 +11,7 @@ defmodule CrmReactor.AI.QueryBuilder do
 
   alias CrmReactor.AI.Telemetry
 
+  require Logger
   import Ecto.Query
 
   @allowed_ops ~w(= != like >= <= > <)
@@ -76,6 +77,11 @@ defmodule CrmReactor.AI.QueryBuilder do
             err
         end
 
+      {:ok, other} ->
+        Logger.warning("QueryBuilder received unexpected LLM payload: #{inspect(other)}")
+        Telemetry.nl2sql_stop(start_time, %{filter_count: 0, rejected: 0, error: true})
+        {:error, :invalid_filters_format}
+
       {:error, _} = err ->
         Telemetry.nl2sql_stop(start_time, %{filter_count: 0, rejected: 0, error: true})
         err
@@ -132,32 +138,39 @@ defmodule CrmReactor.AI.QueryBuilder do
              temperature: 0
            },
            headers: [{"authorization", "Bearer #{api_key}"}],
-           receive_timeout: 15_000
+           receive_timeout: 15_000,
+           finch: CrmReactor.Finch
          ) do
       {:ok, %{status: 200, body: body}} ->
-        [choice | _] = body["choices"]
-        usage = body["usage"]
-
-        if usage do
-          Telemetry.llm_tokens(%{
-            prompt_tokens: usage["prompt_tokens"] || 0,
-            completion_tokens: usage["completion_tokens"] || 0,
-            total_tokens: usage["total_tokens"] || 0,
-            model: "mistral-small-latest",
-            operation: :nl2sql
-          })
-        end
-
-        case Jason.decode(choice["message"]["content"]) do
-          {:ok, parsed} -> {:ok, parsed}
-          {:error, _} -> {:error, "invalid JSON from Mistral LLM"}
-        end
+        emit_nl2sql_tokens(body["usage"])
+        parse_llm_response(body)
 
       {:ok, %{status: status}} ->
         {:error, "Mistral error #{status}"}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp emit_nl2sql_tokens(nil), do: :ok
+
+  defp emit_nl2sql_tokens(usage) do
+    Telemetry.llm_tokens(%{
+      prompt_tokens: usage["prompt_tokens"] || 0,
+      completion_tokens: usage["completion_tokens"] || 0,
+      total_tokens: usage["total_tokens"] || 0,
+      model: "mistral-small-latest",
+      operation: :nl2sql
+    })
+  end
+
+  defp parse_llm_response(body) do
+    [choice | _] = body["choices"]
+
+    case Jason.decode(choice["message"]["content"]) do
+      {:ok, parsed} -> {:ok, parsed}
+      {:error, _} -> {:error, "invalid JSON from Mistral LLM"}
     end
   end
 

@@ -2,12 +2,14 @@ defmodule CrmReactorWeb.InviteController do
   use CrmReactorWeb, :controller
 
   alias CrmReactor.Accounts
+  alias CrmReactor.Accounts.AccountToken
+  alias CrmReactor.Repo
   alias CrmReactorWeb.Plugs.AccountAuth
 
   def show(conn, %{"token" => token}) do
-    case CrmReactor.Accounts.AccountToken.verify_invite_token_query(token) do
+    case AccountToken.verify_invite_token_query(token) do
       {:ok, query} ->
-        if CrmReactor.Repo.one(query) do
+        if Repo.one(query) do
           render(conn, :show, token: token, error: nil, layout: false)
         else
           conn
