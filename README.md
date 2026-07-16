@@ -842,12 +842,6 @@ curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
   -d "{\"url\": \"https://YOUR-NGROK-URL.ngrok-free.app/webhook/telegram\", \"secret_token\": \"${TELEGRAM_SECRET_TOKEN}\"}"
 ```
 
-- `ngrok http 80` => https://blotchy-skilled-rayne.ngrok-free.dev
-- @BotFather (/mybots → select your bot → API Token
-
-
-curl "https://api.telegram.org/bot8995638641:AAGLvkf5pjFfaKqw4ctCrj9rVRahXi_sFlA/setWebhook?url=https://blotchy-skilled-rayne.ngrok-free.dev/webhook/telegram&secret_token=secret-telegram-to-change"
-
 Verify it worked:
 
 curl "https://api.telegram.org/bot8995638641:AAGLvkf5pjFfaKqw4ctCrj9rVRahXi_sFlA/getWebhookInfo"
