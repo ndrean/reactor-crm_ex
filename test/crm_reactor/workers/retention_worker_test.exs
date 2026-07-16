@@ -19,7 +19,8 @@ defmodule CrmReactor.Workers.RetentionWorkerTest do
       is_audio: false,
       channel: :http,
       job_id: nil,
-      attachment: nil
+      attachment: nil,
+      tenant_override: nil
     })
   end
 

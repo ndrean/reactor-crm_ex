@@ -18,7 +18,8 @@ defmodule CrmReactor.Workers.IngestWorker do
       is_audio: args["is_audio"] || false,
       channel: to_channel(args["channel"]),
       job_id: "oban-#{job_id}",
-      attachment: nil
+      attachment: nil,
+      tenant_override: nil
     }
 
     case Reactor.run(MasterIngest, input) do

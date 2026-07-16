@@ -17,7 +17,8 @@ defmodule CrmReactorWeb.CrmController do
       is_audio: false,
       channel: :http,
       job_id: "http-#{Ecto.UUID.generate()}",
-      attachment: nil
+      attachment: nil,
+      tenant_override: nil
     }
 
     case Reactor.run(MasterIngest, input) do

@@ -12,11 +12,13 @@ defmodule CrmReactor.Reactors.MasterIngest do
   input(:channel)
   input(:job_id)
   input(:attachment)
+  input(:tenant_override)
 
-  # :tenant (DB lookup) and :text (optional Whisper HTTP call) have no inter-dependency
-  # and are run concurrently by Reactor before either feeds into :classification.
+  # When the caller already knows the tenant (e.g. web auth), pass it as
+  # :tenant_override to skip the TenantCache lookup entirely.
   step :tenant, CrmReactor.Reactors.Steps.ResolveTenant do
     argument(:user_id, input(:user_id))
+    argument(:tenant_override, input(:tenant_override))
   end
 
   step :text, CrmReactor.Reactors.Steps.Transcribe do

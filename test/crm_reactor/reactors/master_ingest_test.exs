@@ -17,7 +17,8 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.output =~ "Marie"
@@ -32,7 +33,8 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.output =~ "2"
@@ -46,7 +48,8 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.output =~ "Appeler fournisseur"
@@ -60,7 +63,8 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
                is_audio: false,
                channel: :http,
                job_id: nil,
-               attachment: nil
+               attachment: nil,
+               tenant_override: nil
              })
   end
 
@@ -72,7 +76,8 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.output =~ "contacts"
@@ -86,7 +91,8 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.action == "pending"
@@ -101,7 +107,8 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         is_audio: false,
         channel: :http,
         job_id: "http-#{Ecto.UUID.generate()}",
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.action == "pending"
@@ -117,7 +124,8 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.output =~ "Contact créé"

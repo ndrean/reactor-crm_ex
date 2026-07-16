@@ -19,7 +19,8 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.action == "pending"
@@ -40,7 +41,8 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     pending_id = result.pending_id
@@ -57,7 +59,8 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.action == "pending"

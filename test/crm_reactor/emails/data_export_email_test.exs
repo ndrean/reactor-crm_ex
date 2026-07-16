@@ -31,7 +31,8 @@ defmodule CrmReactor.Emails.DataExportEmailTest do
         is_audio: false,
         channel: :http,
         job_id: "http-#{Ecto.UUID.generate()}",
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.action == "dump"
@@ -56,7 +57,8 @@ defmodule CrmReactor.Emails.DataExportEmailTest do
         is_audio: false,
         channel: :http,
         job_id: "http-#{Ecto.UUID.generate()}",
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert result.action == "pending"
@@ -79,7 +81,8 @@ defmodule CrmReactor.Emails.DataExportEmailTest do
         is_audio: false,
         channel: :http,
         job_id: "http-#{Ecto.UUID.generate()}",
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert pending.action == "pending"
@@ -110,7 +113,8 @@ defmodule CrmReactor.Emails.DataExportEmailTest do
         is_audio: false,
         channel: :http,
         job_id: "http-#{Ecto.UUID.generate()}",
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
     assert {:error, :invalid_email} = Mutations.confirm(pending.pending_id, "not-an-email")

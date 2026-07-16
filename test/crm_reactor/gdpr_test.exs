@@ -38,7 +38,8 @@ defmodule CrmReactor.GDPRTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
       {:ok, _} = DataSubject.erase(uid)
@@ -63,7 +64,8 @@ defmodule CrmReactor.GDPRTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
       [marie | _] =

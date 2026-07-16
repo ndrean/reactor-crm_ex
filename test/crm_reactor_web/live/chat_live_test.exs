@@ -4,7 +4,7 @@ defmodule CrmReactorWeb.ChatLiveTest do
   import Phoenix.LiveViewTest
 
   alias CrmReactor.{Repo, TestFixtures}
-  alias CrmReactor.Tenants.{TenantCache, UserMapping}
+  alias CrmReactor.Tenants.UserMapping
 
   @vcf_path "user.vcf"
 
@@ -15,7 +15,8 @@ defmodule CrmReactorWeb.ChatLiveTest do
         role: "user"
       })
 
-    # Add a user mapping for the account's email so the Reactor can resolve it
+    # UserMapping is still needed for Mutations.confirm/3 (confirm/reject flows).
+    # The Reactor pipeline itself no longer needs it (uses tenant_override).
     %UserMapping{}
     |> UserMapping.changeset(%{
       user_identifier: account.email,
@@ -23,7 +24,6 @@ defmodule CrmReactorWeb.ChatLiveTest do
     })
     |> Repo.insert!()
 
-    TenantCache.reload()
     %{conn: conn, account: account}
   end
 
@@ -68,7 +68,7 @@ defmodule CrmReactorWeb.ChatLiveTest do
     assert render(view) == html_before
   end
 
-  test "send a message processes through reactor and shows response", %{conn: conn} do
+  test "send a message processes through reactor and shows assistant response", %{conn: conn} do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
@@ -78,28 +78,31 @@ defmodule CrmReactorWeb.ChatLiveTest do
     view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "aide"})
     html = render(view)
 
+    # User message appears
     assert html =~ "aide"
+    # Assistant actually responded (not stuck loading, no error)
     refute html =~ "En cours"
+    refute html =~ "erreur"
+    refute html =~ "Identifiant inconnu"
+    # Assistant response has meaningful content from the help module
+    assert html =~ "contacts"
   end
 
-  test "send to unknown user shows error message", %{conn: conn} do
+  test "search contacts returns results (full round-trip)", %{conn: conn} do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
 
-    # Create account but DON'T add user mapping for its email
-    %{conn: conn, account: _account} =
-      register_and_log_in_user(conn, %{
-        tenant_id: fixture.tenant.tenant_id,
-        email: "nomapping@test.com",
-        role: "user"
-      })
-
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
     {:ok, view, _} = live(conn, "/chat")
 
-    view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "aide"})
+    view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "cherche Marie"})
     html = render(view)
 
-    assert html =~ "Identifiant inconnu"
+    # Reactor resolved tenant via tenant_override, ran the pipeline, returned results
+    assert html =~ "Marie"
+    assert html =~ "Dupont"
+    refute html =~ "erreur"
+    refute html =~ "Identifiant inconnu"
   end
 
   # ── Confirm / Reject ──────────────────────────────────────────────────

@@ -3,24 +3,23 @@ defmodule CrmReactorWeb.ChatLive do
 
   alias CrmReactor.Reactors.MasterIngest
   alias CrmReactor.Reactors.Modules.Mutations
+  alias CrmReactor.Repo
   alias CrmReactor.Storage
-  alias CrmReactor.Tenants.TenantCache
+  alias CrmReactor.Tenants.Tenant
+
+  import Ecto.Query
 
   require Logger
 
   @impl true
   def mount(_params, _session, socket) do
     account = socket.assigns.current_account
-
-    # Ensure TenantCache has this email mapped — handles stale cache after
-    # deployments or multi-container setups where the admin panel reload
-    # only reached a different process.
-    ensure_cache_entry(account.email)
+    tenant = resolve_tenant(account.tenant_id)
 
     {:ok,
      socket
      |> assign(:user_id, account.email)
-     |> assign(:tenant_id, account.tenant_id)
+     |> assign(:tenant, tenant)
      |> assign(:input, "")
      |> assign(:pending, nil)
      |> assign(:email_input, "")
@@ -127,7 +126,8 @@ defmodule CrmReactorWeb.ChatLive do
         is_audio: false,
         channel: :http,
         job_id: job_id,
-        attachment: attachment
+        attachment: attachment,
+        tenant_override: socket.assigns.tenant
       })
 
     case result do
@@ -161,10 +161,9 @@ defmodule CrmReactorWeb.ChatLive do
   end
 
   defp consume_attachment(socket) do
-    schema = CrmReactor.Tenants.schema_for_user(socket.assigns.user_id)
+    schema = socket.assigns.tenant.schema_name
 
-    with {[_ | _], []} <- uploaded_entries(socket, :attachment),
-         {:ok, schema} <- schema do
+    with {[_ | _], []} <- uploaded_entries(socket, :attachment) do
       [result] =
         consume_uploaded_entries(socket, :attachment, fn %{path: path}, entry ->
           content = File.read!(path)
@@ -215,11 +214,17 @@ defmodule CrmReactorWeb.ChatLive do
     end
   end
 
-  defp ensure_cache_entry(email) do
-    case TenantCache.lookup(email) do
-      {:ok, _} -> :ok
-      {:error, :unknown_user} -> TenantCache.reload()
-    end
+  defp resolve_tenant(tenant_id) do
+    tenant = Repo.one!(from(t in Tenant, where: t.tenant_id == ^tenant_id))
+
+    %{
+      tenant_id: tenant.tenant_id,
+      schema_name: tenant.schema_name,
+      company_name: tenant.company_name,
+      admin_email: tenant.admin_email,
+      webhook_url: tenant.webhook_url,
+      webhook_secret: tenant.webhook_secret
+    }
   end
 
   @impl true

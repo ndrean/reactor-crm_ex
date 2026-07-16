@@ -34,7 +34,8 @@ defmodule CrmReactor.ErrorRecoveryTest do
                  is_audio: false,
                  channel: :http,
                  job_id: nil,
-                 attachment: nil
+                 attachment: nil,
+                 tenant_override: nil
                })
     end
 
@@ -48,7 +49,8 @@ defmodule CrmReactor.ErrorRecoveryTest do
         is_audio: false,
         channel: :http,
         job_id: nil,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
       logs = Repo.all(ExecutionLog, prefix: tenant.schema_name)
@@ -67,7 +69,8 @@ defmodule CrmReactor.ErrorRecoveryTest do
         is_audio: false,
         channel: :http,
         job_id: job_id,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       })
 
       # Simulate what IngestWorker.mark_log_failed does
@@ -100,7 +103,8 @@ defmodule CrmReactor.ErrorRecoveryTest do
         is_audio: false,
         channel: :http,
         job_id: job_id,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       }
 
       # First attempt: creates log, classifier crashes
@@ -146,7 +150,8 @@ defmodule CrmReactor.ErrorRecoveryTest do
         is_audio: false,
         channel: :http,
         job_id: job_id,
-        attachment: nil
+        attachment: nil,
+        tenant_override: nil
       }
 
       # First attempt: crash
