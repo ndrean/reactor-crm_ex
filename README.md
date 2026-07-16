@@ -5,53 +5,64 @@ A multi-tenant Natural Language Execution Router: an AI-assisted workflow runner
 Uses **Reactor** for workflow orchestration, **Oban** for durable job processing.
 **Phoenix** is used as the HTTP/webhook gateway, and Telegram for mobile devices.
 
-## Getting started
+## Deploy on a VPS
 
-### 1. Create an admin account
-
-After building and migrating the database:
+Requirements: a Debian/Ubuntu server with `git`, `docker`, and `docker compose`.
 
 ```bash
-# Development
-mix crm.create_admin admin@example.com MySecurePassword
-
-# Production (Docker release)
-docker exec -e ADMIN_EMAIL=admin@example.com -e ADMIN_PASSWORD=MySecurePassword \
-  <container> bin/crm_reactor eval "CrmReactor.Release.create_admin()"
+git clone <your-repo-url> && cd crm_reactor
+cp .env.example .env-docker   # edit with your values
+docker compose up -d --build
 ```
 
-The admin can then log in at `/login` and access the admin panel at `/admin`.
+The `migrate` service runs automatically before the app starts — it runs migrations and creates the admin account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in your `.env-docker`.
+
+The stack includes: **Postgres**, the **app** (Elixir release), **Caddy** (auto-HTTPS reverse proxy), **Prometheus** and **Grafana** (monitoring). Set `SITE_ADDRESS=yourdomain.com` in `.env-docker` for Caddy to auto-provision TLS.
+
+### 1. Configure `.env-docker`
+
+Copy `.env.example` and fill in the required values:
+
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `DATABASE_URL` | yes | Matches `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` |
+| `SECRET_KEY_BASE` | yes | Generate with `mix phx.gen.secret` or `openssl rand -hex 64` |
+| `MISTRAL_API_KEY` | yes | For LLM classification |
+| `CLOAK_KEY` | yes | `openssl rand -base64 32` — persist across deploys or encrypted data is lost |
+| `ADMIN_EMAIL` | yes | Admin login email (created on first `migrate`) |
+| `ADMIN_PASSWORD` | yes | Admin login password |
+| `SITE_ADDRESS` | yes | Your domain (e.g. `crm.example.com`) — Caddy auto-provisions HTTPS |
+| `TELEGRAM_BOT_TOKEN` | for Telegram | Token from @BotFather |
+| `TELEGRAM_SECRET_TOKEN` | for Telegram | Any random string, verified on each webhook request |
+| `ADMIN_TOKEN` | optional | Bearer token for the `/api/admin/*` REST endpoints |
 
 ### 2. Set up Telegram
 
-**Prerequisites:** create a Telegram bot via [@BotFather](https://t.me/BotFather) to get a bot token.
-
-Set these environment variables before starting the app:
+Create a bot via [@BotFather](https://t.me/BotFather) to get a bot token. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_SECRET_TOKEN` in `.env-docker`, then rebuild:
 
 ```bash
-TELEGRAM_BOT_TOKEN=<token from BotFather>
-TELEGRAM_SECRET_TOKEN=<any random string you choose>
+docker compose up -d --build
 ```
 
-Once the app is running, register the webhook with Telegram:
+Register the webhook with Telegram (one-time):
 
 ```bash
 curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-  -d url="https://your-host.com/webhook/telegram" \
+  -d url="https://yourdomain.com/webhook/telegram" \
   -d secret_token="${TELEGRAM_SECRET_TOKEN}"
 ```
 
-Telegram will now forward all bot messages to your app. The `TELEGRAM_SECRET_TOKEN` is verified on every incoming request.
-
 ### 3. Manage users
 
-**Web users** — the admin creates accounts from `/admin/users`. The user receives an email with an invite link to set their password. Login uses email + password.
+Log in at `https://yourdomain.com/login` with your admin credentials.
 
-**Telegram users** — to connect a Telegram account, the user sends `/start` to the bot to get their chat ID, then gives it to the admin. The admin adds this chat ID as a "user mapping" in `/admin/users` (or uses the one-step `/admin/setup` page to provision a tenant + Telegram user together).
+**Web users** — create accounts in `/admin/users`. The user receives an email with an invite link to set their password. Login is email + password.
+
+**Telegram users** — the user sends any message to the bot and gives their chat ID to the admin. The admin adds the chat ID + user email as a "user mapping" in `/admin/users`, or uses `/admin/setup` to provision a new tenant + Telegram user in one step.
 
 ### 4. Outbound webhooks (optional)
 
-Each tenant can have an outbound webhook URL configured in `/admin/tenants`. When set, the app will POST an HMAC-signed payload to that URL after every completed action. This is for integrating with external systems (CRM, ERP, etc.) — it is unrelated to the Telegram webhook above.
+Each tenant can have an outbound webhook URL set in `/admin/tenants`. When configured, the app POSTs an HMAC-signed payload to that URL after every completed action — for integrating with external systems. This is unrelated to the Telegram inbound webhook.
 
 ## Design philosophy
 
