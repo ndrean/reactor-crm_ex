@@ -254,51 +254,55 @@ defmodule CrmReactorWeb.AdminLive.Users do
 
     case Repo.get_by(UserMapping, email: email) do
       %{tenant_id: ^tid} = existing ->
-        # Same tenant — update telegram_id if provided
-        if tg && is_nil(existing.telegram_id) do
-          case existing |> UserMapping.changeset(%{telegram_id: tg}) |> Repo.update() do
-            {:ok, user} ->
-              TenantCache.reload()
-
-              {:noreply,
-               socket
-               |> stream_insert(:users, user)
-               |> put_flash(:info, "Telegram #{tg} linked to #{email}")}
-
-            {:error, changeset} ->
-              msg =
-                Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
-                |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
-
-              {:noreply, put_flash(socket, :error, msg)}
-          end
-        else
-          {:noreply, put_flash(socket, :error, "#{email} already has a Telegram ID linked.")}
-        end
+        link_telegram(socket, existing, email, tg)
 
       %{tenant_id: other} ->
         {:noreply,
          put_flash(socket, :error, "#{email} is already associated with tenant '#{other}'.")}
 
       nil ->
-        attrs = %{tenant_id: tid, email: email, telegram_id: tg}
-
-        case %UserMapping{} |> UserMapping.changeset(attrs) |> Repo.insert() do
-          {:ok, user} ->
-            TenantCache.reload()
-
-            {:noreply,
-             socket
-             |> stream_insert(:users, user)
-             |> put_flash(:info, "User #{email} added to #{tid}")}
-
-          {:error, changeset} ->
-            msg =
-              Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
-              |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
-
-            {:noreply, put_flash(socket, :error, msg)}
-        end
+        create_mapping(socket, tid, email, tg)
     end
+  end
+
+  defp link_telegram(socket, existing, email, tg) do
+    if tg && is_nil(existing.telegram_id) do
+      case existing |> UserMapping.changeset(%{telegram_id: tg}) |> Repo.update() do
+        {:ok, user} ->
+          TenantCache.reload()
+
+          {:noreply,
+           socket
+           |> stream_insert(:users, user)
+           |> put_flash(:info, "Telegram #{tg} linked to #{email}")}
+
+        {:error, changeset} ->
+          {:noreply, put_flash(socket, :error, changeset_error_msg(changeset))}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "#{email} already has a Telegram ID linked.")}
+    end
+  end
+
+  defp create_mapping(socket, tid, email, tg) do
+    case %UserMapping{}
+         |> UserMapping.changeset(%{tenant_id: tid, email: email, telegram_id: tg})
+         |> Repo.insert() do
+      {:ok, user} ->
+        TenantCache.reload()
+
+        {:noreply,
+         socket
+         |> stream_insert(:users, user)
+         |> put_flash(:info, "User #{email} added to #{tid}")}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, changeset_error_msg(changeset))}
+    end
+  end
+
+  defp changeset_error_msg(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
+    |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
   end
 end

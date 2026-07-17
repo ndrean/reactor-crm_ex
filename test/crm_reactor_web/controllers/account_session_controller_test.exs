@@ -1,6 +1,9 @@
 defmodule CrmReactorWeb.AccountSessionControllerTest do
   use CrmReactorWeb.ConnCase
 
+  alias CrmReactor.Accounts.AccountToken
+  alias CrmReactor.Repo
+
   setup %{conn: conn} do
     account = create_account(%{email: "session@test.com", password: "password1234", role: "user"})
     %{conn: conn, account: account}
@@ -49,10 +52,8 @@ defmodule CrmReactorWeb.AccountSessionControllerTest do
 
   describe "GET /login/magic/:token" do
     test "logs in with valid magic link token", %{conn: conn, account: account} do
-      {encoded, token_struct} =
-        CrmReactor.Accounts.AccountToken.build_magic_link_token(account)
-
-      CrmReactor.Repo.insert!(token_struct)
+      {encoded, token_struct} = AccountToken.build_magic_link_token(account)
+      Repo.insert!(token_struct)
 
       conn = get(conn, ~p"/login/magic/#{encoded}")
       assert redirected_to(conn) == "/chat"

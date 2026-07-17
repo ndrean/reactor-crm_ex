@@ -204,43 +204,43 @@ defmodule CrmReactor.Tenants.Provisioner do
 
   defp insert_user_mapping!(tenant_id, user_identifier, opts) do
     {email, telegram_id} = resolve_identity(user_identifier, opts)
+    if email, do: upsert_mapping!(tenant_id, email, telegram_id)
+  end
 
-    if email do
-      case Repo.get_by(UserMapping, email: email) do
-        nil ->
-          case %UserMapping{}
-               |> UserMapping.changeset(%{
-                 email: email,
-                 tenant_id: tenant_id,
-                 telegram_id: telegram_id
-               })
-               |> Repo.insert() do
-            {:ok, _} -> :ok
-            {:error, changeset} -> Repo.rollback(changeset)
-          end
+  defp upsert_mapping!(tenant_id, email, telegram_id) do
+    case Repo.get_by(UserMapping, email: email) do
+      nil -> insert_mapping!(tenant_id, email, telegram_id)
+      %{tenant_id: ^tenant_id} = existing -> maybe_link_telegram!(existing, telegram_id)
+      %{tenant_id: other} -> rollback_tenant_conflict!(other)
+    end
+  end
 
-        %{tenant_id: ^tenant_id} = existing ->
-          # Same tenant — update telegram_id if provided and not already set
-          if telegram_id && is_nil(existing.telegram_id) do
-            case existing
-                 |> UserMapping.changeset(%{telegram_id: telegram_id})
-                 |> Repo.update() do
-              {:ok, _} -> :ok
-              {:error, changeset} -> Repo.rollback(changeset)
-            end
-          end
+  defp insert_mapping!(tenant_id, email, telegram_id) do
+    case %UserMapping{}
+         |> UserMapping.changeset(%{email: email, tenant_id: tenant_id, telegram_id: telegram_id})
+         |> Repo.insert() do
+      {:ok, _} -> :ok
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
 
-        %{tenant_id: other} ->
-          Repo.rollback(%Ecto.Changeset{
-            action: :insert,
-            errors: [
-              email:
-                {"is already associated with tenant '#{other}'", [validation: :tenant_conflict]}
-            ],
-            valid?: false
-          })
+  defp maybe_link_telegram!(existing, telegram_id) do
+    if telegram_id && is_nil(existing.telegram_id) do
+      case existing |> UserMapping.changeset(%{telegram_id: telegram_id}) |> Repo.update() do
+        {:ok, _} -> :ok
+        {:error, changeset} -> Repo.rollback(changeset)
       end
     end
+  end
+
+  defp rollback_tenant_conflict!(other) do
+    Repo.rollback(%Ecto.Changeset{
+      action: :insert,
+      errors: [
+        email: {"is already associated with tenant '#{other}'", [validation: :tenant_conflict]}
+      ],
+      valid?: false
+    })
   end
 
   defp resolve_identity(nil, opts) do

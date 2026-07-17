@@ -120,30 +120,26 @@ defmodule CrmReactor.Accounts do
 
   def accept_invite(token, %{} = password_attrs) do
     with {:ok, query} <- AccountToken.verify_invite_token_query(token),
-         %Account{} = account <- Repo.one(query) do
-      changeset = Account.password_changeset(account, password_attrs)
-
-      if changeset.valid? do
-        Repo.transaction(fn ->
-          updated = Repo.update!(changeset)
-
-          from(t in AccountToken,
-            where: t.account_id == ^account.id and t.context == "invite"
-          )
-          |> Repo.delete_all()
-
-          updated
-        end)
-        |> case do
-          {:ok, account} -> {:ok, account}
-          {:error, reason} -> {:error, reason}
-        end
-      else
-        {:error, %{changeset | action: :update}}
-      end
+         %Account{} = account <- Repo.one(query),
+         %{valid?: true} = changeset <- Account.password_changeset(account, password_attrs) do
+      accept_invite_transaction(account, changeset)
     else
+      %Ecto.Changeset{} = changeset -> {:error, %{changeset | action: :update}}
       _ -> {:error, :invalid_token}
     end
+  end
+
+  defp accept_invite_transaction(account, changeset) do
+    Repo.transaction(fn ->
+      updated = Repo.update!(changeset)
+
+      from(t in AccountToken,
+        where: t.account_id == ^account.id and t.context == "invite"
+      )
+      |> Repo.delete_all()
+
+      updated
+    end)
   end
 
   # ── Magic link login ──────────────────────────────────────────────────────
@@ -267,21 +263,7 @@ defmodule CrmReactor.Accounts do
     Repo.transaction(fn ->
       case %Account{} |> Account.invite_changeset(attrs) |> Repo.insert() do
         {:ok, account} ->
-          # Skip mapping creation if one already exists for this email+tenant
-          # (e.g. telegram user was provisioned first)
-          case Repo.get_by(UserMapping, email: account.email) do
-            %{tenant_id: tenant_id} when tenant_id == account.tenant_id ->
-              :ok
-
-            nil ->
-              %UserMapping{}
-              |> UserMapping.changeset(%{
-                email: account.email,
-                tenant_id: account.tenant_id
-              })
-              |> Repo.insert!()
-          end
-
+          ensure_user_mapping(account)
           account
 
         {:error, changeset} ->
@@ -292,5 +274,17 @@ defmodule CrmReactor.Accounts do
       {:ok, _} -> TenantCache.reload()
       _ -> :ok
     end)
+  end
+
+  defp ensure_user_mapping(account) do
+    case Repo.get_by(UserMapping, email: account.email) do
+      %{tenant_id: tenant_id} when tenant_id == account.tenant_id ->
+        :ok
+
+      nil ->
+        %UserMapping{}
+        |> UserMapping.changeset(%{email: account.email, tenant_id: account.tenant_id})
+        |> Repo.insert!()
+    end
   end
 end
