@@ -1,5 +1,5 @@
 defmodule CrmReactor.Reactors.MasterIngest do
-  @moduledoc "Main pipeline: tenant resolution, transcription, classification, dispatch."
+  @moduledoc "Main pipeline: transcription, classification, dispatch. Tenant is resolved at the transport boundary."
   use Reactor
 
   middlewares do
@@ -12,14 +12,7 @@ defmodule CrmReactor.Reactors.MasterIngest do
   input(:channel)
   input(:job_id)
   input(:attachment)
-  input(:tenant_override)
-
-  # When the caller already knows the tenant (e.g. web auth), pass it as
-  # :tenant_override to skip the TenantCache lookup entirely.
-  step :tenant, CrmReactor.Reactors.Steps.ResolveTenant do
-    argument(:user_id, input(:user_id))
-    argument(:tenant_override, input(:tenant_override))
-  end
+  input(:tenant)
 
   step :text, CrmReactor.Reactors.Steps.Transcribe do
     argument(:raw_input, input(:raw_input))
@@ -27,7 +20,7 @@ defmodule CrmReactor.Reactors.MasterIngest do
   end
 
   step :log, CrmReactor.Reactors.Steps.LogExecution do
-    argument(:tenant, result(:tenant))
+    argument(:tenant, input(:tenant))
     argument(:raw_input, input(:raw_input))
     argument(:channel, input(:channel))
     argument(:user_id, input(:user_id))
@@ -37,13 +30,13 @@ defmodule CrmReactor.Reactors.MasterIngest do
   step :classification, CrmReactor.Reactors.Steps.ClassifyIntent do
     argument(:text, result(:text))
     argument(:attachment, input(:attachment))
-    argument(:tenant, result(:tenant))
+    argument(:tenant, input(:tenant))
     argument(:user_id, input(:user_id))
   end
 
   step :result, CrmReactor.Reactors.Steps.DispatchModule do
     argument(:classification, result(:classification))
-    argument(:tenant, result(:tenant))
+    argument(:tenant, input(:tenant))
     argument(:channel, input(:channel))
     argument(:user_id, input(:user_id))
     argument(:log, result(:log))
@@ -53,7 +46,7 @@ defmodule CrmReactor.Reactors.MasterIngest do
   step :finalize, CrmReactor.Reactors.Steps.FinalizeReply do
     argument(:result, result(:result))
     argument(:log, result(:log))
-    argument(:tenant, result(:tenant))
+    argument(:tenant, input(:tenant))
     argument(:classification, result(:classification))
     argument(:attachment, input(:attachment))
     argument(:user_id, input(:user_id))

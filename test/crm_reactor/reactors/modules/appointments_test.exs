@@ -11,7 +11,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
   setup do
     tid = "appt_#{System.unique_integer([:positive])}"
-    user_id = "appt_user_#{System.unique_integer([:positive])}"
+    user_id = "appt_user_#{System.unique_integer([:positive])}@test.com"
     {:ok, tenant} = Provisioner.provision(tid, "Appt Corp", user_id)
     schema = tenant.schema_name
 

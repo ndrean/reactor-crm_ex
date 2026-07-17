@@ -5,7 +5,14 @@ defmodule CrmReactor.Tenants.ProvisionerTest do
 
   test "provision creates schema and tenant record" do
     tid = "prov_test_#{System.unique_integer([:positive])}"
-    {:ok, tenant} = Provisioner.provision(tid, "Prov Corp", "1234567890")
+
+    uniq = System.unique_integer([:positive])
+
+    {:ok, tenant} =
+      Provisioner.provision(tid, "Prov Corp", nil,
+        email: "prov_#{uniq}@test.com",
+        telegram_id: "123#{uniq}"
+      )
 
     assert tenant.tenant_id == tid
     assert tenant.schema_name == "customer_#{tid}"

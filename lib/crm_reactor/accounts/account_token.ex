@@ -7,6 +7,7 @@ defmodule CrmReactor.Accounts.AccountToken do
   @rand_size 32
   @session_validity_in_days 60
   @invite_validity_in_hours 24
+  @magic_link_validity_in_minutes 15
 
   schema "account_tokens" do
     field :token, :binary
@@ -41,6 +42,35 @@ defmodule CrmReactor.Accounts.AccountToken do
       where: t.inserted_at > ago(@session_validity_in_days, "day"),
       join: a in assoc(t, :account),
       select: a
+  end
+
+  def build_magic_link_token(account) do
+    token = :crypto.strong_rand_bytes(@rand_size)
+
+    {Base.url_encode64(token, padding: false),
+     %__MODULE__{
+       token: token,
+       context: "magic_link",
+       sent_to: account.email,
+       account_id: account.id
+     }}
+  end
+
+  def verify_magic_link_token_query(encoded_token) do
+    case Base.url_decode64(encoded_token, padding: false) do
+      {:ok, token} ->
+        query =
+          from t in __MODULE__,
+            where: t.token == ^token and t.context == "magic_link",
+            where: t.inserted_at > ago(@magic_link_validity_in_minutes, "minute"),
+            join: a in assoc(t, :account),
+            select: a
+
+        {:ok, query}
+
+      :error ->
+        :error
+    end
   end
 
   def verify_invite_token_query(encoded_token) do

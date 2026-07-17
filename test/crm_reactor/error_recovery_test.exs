@@ -14,7 +14,7 @@ defmodule CrmReactor.ErrorRecoveryTest do
   setup do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
-    fixture
+    Map.put(fixture, :tenant_map, TestFixtures.tenant_map(fixture))
   end
 
   describe "classifier crash after log creation" do
@@ -26,7 +26,7 @@ defmodule CrmReactor.ErrorRecoveryTest do
       end)
     end
 
-    test "reactor returns error", %{user_id: user_id} do
+    test "reactor returns error", %{user_id: user_id, tenant_map: tenant_map} do
       assert {:error, _} =
                Reactor.run(CrmReactor.Reactors.MasterIngest, %{
                  user_id: user_id,
@@ -35,13 +35,14 @@ defmodule CrmReactor.ErrorRecoveryTest do
                  channel: :http,
                  job_id: nil,
                  attachment: nil,
-                 tenant_override: nil
+                 tenant: tenant_map
                })
     end
 
     test "log is left as processing without job_id (no worker recovery)", %{
       user_id: user_id,
-      tenant: tenant
+      tenant: tenant,
+      tenant_map: tenant_map
     } do
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -50,7 +51,7 @@ defmodule CrmReactor.ErrorRecoveryTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
       logs = Repo.all(ExecutionLog, prefix: tenant.schema_name)
@@ -59,7 +60,8 @@ defmodule CrmReactor.ErrorRecoveryTest do
 
     test "log is marked as error with job_id (worker recovery)", %{
       user_id: user_id,
-      tenant: tenant
+      tenant: tenant,
+      tenant_map: tenant_map
     } do
       job_id = "test-#{System.unique_integer([:positive])}"
 
@@ -70,7 +72,7 @@ defmodule CrmReactor.ErrorRecoveryTest do
         channel: :http,
         job_id: job_id,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
       # Simulate what IngestWorker.mark_log_failed does
@@ -93,7 +95,8 @@ defmodule CrmReactor.ErrorRecoveryTest do
 
     test "retry reuses same log row via job_id (no duplicates)", %{
       user_id: user_id,
-      tenant: tenant
+      tenant: tenant,
+      tenant_map: tenant_map
     } do
       job_id = "retry-test-#{System.unique_integer([:positive])}"
 
@@ -104,7 +107,7 @@ defmodule CrmReactor.ErrorRecoveryTest do
         channel: :http,
         job_id: job_id,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       }
 
       # First attempt: creates log, classifier crashes
@@ -140,7 +143,8 @@ defmodule CrmReactor.ErrorRecoveryTest do
   describe "successful pipeline after retry" do
     test "log transitions from error to completed on successful retry", %{
       user_id: user_id,
-      tenant: tenant
+      tenant: tenant,
+      tenant_map: tenant_map
     } do
       job_id = "recovery-#{System.unique_integer([:positive])}"
 
@@ -151,7 +155,7 @@ defmodule CrmReactor.ErrorRecoveryTest do
         channel: :http,
         job_id: job_id,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       }
 
       # First attempt: crash

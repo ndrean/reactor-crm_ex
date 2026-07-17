@@ -66,7 +66,6 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
   defp provide_export_email(log, schema, email) do
     if valid_email?(email) do
       tenant = Repo.get_by!(Tenant, schema_name: schema)
-      tenant |> Ecto.Changeset.change(admin_email: email) |> Repo.update!()
 
       case DataExport.execute(%{
              action: "dump",
@@ -90,7 +89,7 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
       from m in UserMapping,
         join: t in Tenant,
         on: t.tenant_id == m.tenant_id,
-        where: m.user_identifier == ^user_id,
+        where: m.email == ^user_id or m.telegram_id == ^user_id,
         select: t.schema_name
     )
   end

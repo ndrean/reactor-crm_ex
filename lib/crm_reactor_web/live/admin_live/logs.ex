@@ -119,8 +119,20 @@ defmodule CrmReactorWeb.AdminLive.Logs do
     end
   end
 
+  @log_columns %{
+    "id" => :id,
+    "triggered_by" => :triggered_by,
+    "raw_input" => :raw_input,
+    "module" => :module,
+    "action" => :action,
+    "status" => :status,
+    "output" => :output,
+    "logged_at" => :logged_at,
+    "schema_name" => :schema_name
+  }
+
   defp parse_log_rows(rows, columns) do
-    columns = Enum.map(columns, &String.to_atom/1)
+    columns = Enum.map(columns, &Map.fetch!(@log_columns, &1))
 
     Enum.map(rows, fn row ->
       log = Enum.zip(columns, row) |> Map.new()

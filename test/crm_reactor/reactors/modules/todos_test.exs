@@ -18,20 +18,20 @@ defmodule CrmReactor.Reactors.Modules.TodosTest do
   setup do
     # ── Tenant alfa: 2 users ─────────────────────────────────────────────
     tid_alfa = "todos_alfa_#{System.unique_integer([:positive])}"
-    user_1 = "todos_u1_#{System.unique_integer([:positive])}"
-    user_2 = "todos_u2_#{System.unique_integer([:positive])}"
+    user_1 = "todos_u1_#{System.unique_integer([:positive])}@test.com"
+    user_2 = "todos_u2_#{System.unique_integer([:positive])}@test.com"
 
     {:ok, tenant_alfa} = Provisioner.provision(tid_alfa, "Alfa Corp", user_1)
     schema = tenant_alfa.schema_name
 
     Repo.query!(
-      "INSERT INTO global_registry.user_mappings (user_identifier, tenant_id) VALUES ($1, $2)",
+      "INSERT INTO global_registry.user_mappings (email, tenant_id) VALUES ($1, $2)",
       [user_2, tid_alfa]
     )
 
     # ── Tenant beta: 1 user ──────────────────────────────────────────────
     tid_beta = "todos_beta_#{System.unique_integer([:positive])}"
-    user_beta = "todos_ubeta_#{System.unique_integer([:positive])}"
+    user_beta = "todos_ubeta_#{System.unique_integer([:positive])}@test.com"
 
     {:ok, tenant_beta} = Provisioner.provision(tid_beta, "Beta Corp", user_beta)
     schema_beta = tenant_beta.schema_name

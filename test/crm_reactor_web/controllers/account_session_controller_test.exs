@@ -47,6 +47,25 @@ defmodule CrmReactorWeb.AccountSessionControllerTest do
     end
   end
 
+  describe "GET /login/magic/:token" do
+    test "logs in with valid magic link token", %{conn: conn, account: account} do
+      {encoded, token_struct} =
+        CrmReactor.Accounts.AccountToken.build_magic_link_token(account)
+
+      CrmReactor.Repo.insert!(token_struct)
+
+      conn = get(conn, ~p"/login/magic/#{encoded}")
+      assert redirected_to(conn) == "/chat"
+      assert get_session(conn, :account_token)
+    end
+
+    test "redirects with flash on invalid token", %{conn: conn} do
+      conn = get(conn, ~p"/login/magic/invalidtoken")
+      assert redirected_to(conn) == "/login"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "invalide ou expiré"
+    end
+  end
+
   describe "DELETE /logout" do
     test "logs out and redirects to /login", %{conn: conn, account: account} do
       conn = log_in_account(conn, account)

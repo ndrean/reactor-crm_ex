@@ -13,7 +13,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsIsolationTest do
     # tenant B manually with a different user_id to avoid the unique constraint.
     fixture_a = TestFixtures.provision_test_tenant("iso_a")
 
-    user_b = "6666666666"
+    user_b = "user_b@test.com"
 
     {:ok, tenant_b} =
       Provisioner.provision("test_iso_b", "Test Corp B", user_b)
@@ -94,8 +94,8 @@ defmodule CrmReactor.Reactors.Modules.MutationsIsolationTest do
     %UserMapping{}
     |> UserMapping.changeset(%{
       tenant_id: ctx.tenant_a.tenant_id,
-      user_identifier: other_user_id,
-      platform: "test"
+      email: "other_#{other_user_id}@test.com",
+      telegram_id: other_user_id
     })
     |> Repo.insert!()
 

@@ -8,10 +8,10 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
   setup do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
-    fixture
+    Map.put(fixture, :tenant_map, TestFixtures.tenant_map(fixture))
   end
 
-  test "perform/1 auto-rejects a pending mutation", %{user_id: user_id} do
+  test "perform/1 auto-rejects a pending mutation", %{user_id: user_id, tenant_map: tenant_map} do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -20,7 +20,7 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     assert result.action == "pending"
@@ -33,7 +33,10 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
     assert :ok = perform_job(PendingTimeoutWorker, %{"pending_id" => Ecto.UUID.generate()})
   end
 
-  test "perform/1 is idempotent - double rejection returns :ok", %{user_id: user_id} do
+  test "perform/1 is idempotent - double rejection returns :ok", %{
+    user_id: user_id,
+    tenant_map: tenant_map
+  } do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -42,7 +45,7 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     pending_id = result.pending_id
@@ -51,7 +54,11 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
     assert :ok = perform_job(PendingTimeoutWorker, %{"pending_id" => pending_id})
   end
 
-  test "perform/1 with schema_name key auto-rejects", %{user_id: user_id, tenant: tenant} do
+  test "perform/1 with schema_name key auto-rejects", %{
+    user_id: user_id,
+    tenant: tenant,
+    tenant_map: tenant_map
+  } do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -60,7 +67,7 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     assert result.action == "pending"

@@ -36,6 +36,41 @@
     <div class="admin-content">
       <%= @inner_content %>
     </div>
-    <script type="module" src="/assets/app.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
+    <script type="module">
+      import { Socket } from "/assets/phoenix.mjs"
+      import { LiveSocket } from "/assets/phoenix_live_view.esm.js"
+
+      const Hooks = {
+        Tippy: {
+          mounted() {
+            this.instance = tippy(this.el);
+          },
+          updated() {
+            this.instance.setProps(
+              Object.fromEntries(
+                Object.entries(this.el.dataset)
+                  .filter(([k]) => k.startsWith("tippy"))
+                  .map(([k, v]) => [this.tippyPropName(k), v])
+              )
+            );
+          },
+          destroyed() {
+            this.instance.destroy();
+          },
+          tippyPropName(k) {
+            const strippedName = k.replace("tippy", "");
+            return strippedName.charAt(0).toLowerCase() + strippedName.slice(1);
+          },
+        },
+      };
+
+      let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+      let liveSocket = new LiveSocket("/live", Socket, { params: { _csrf_token: csrfToken }, hooks: Hooks })
+      liveSocket.connect()
+      window.liveSocket = liveSocket
+    </script>
   </body>
 </html>

@@ -52,6 +52,7 @@ defmodule CrmReactorWeb.Router do
   scope "/", CrmReactorWeb do
     pipe_through :browser
 
+    get "/login/magic/:token", AccountSessionController, :magic_link
     delete "/logout", AccountSessionController, :delete
     get "/logout", AccountSessionController, :delete
   end
@@ -136,6 +137,6 @@ defmodule CrmReactorWeb.Router do
   get "/metrics", CrmReactorWeb.MetricsController, :index
 
   # if Mix.env() == :dev do
-    forward "/mailbox", Plug.Swoosh.MailboxPreview
+  forward "/mailbox", Plug.Swoosh.MailboxPreview
   # end
 end

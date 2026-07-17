@@ -2,7 +2,7 @@ defmodule CrmReactorWeb.AdminController do
   use CrmReactorWeb, :controller
 
   alias CrmReactor.AI.SubscriptionCache
-  alias CrmReactor.GDPR.DataSubject
+  alias CrmReactor.GDPR.{AuditLog, DataSubject}
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.Provisioner
 
@@ -13,7 +13,8 @@ defmodule CrmReactorWeb.AdminController do
 
     opts = [
       admin_email: params["admin_email"],
-      user_email: params["user_email"]
+      email: params["email"] || params["user_email"] || params["admin_email"],
+      telegram_id: params["telegram_chat_id"]
     ]
 
     case Provisioner.provision(tid, name, user_id, opts) do
@@ -95,6 +96,7 @@ defmodule CrmReactorWeb.AdminController do
   def export_subject(conn, %{"identifier" => identifier}) do
     case DataSubject.export(identifier) do
       {:ok, data} ->
+        AuditLog.record("export", identifier, "admin_api")
         json(conn, data)
 
       {:error, :not_found} ->
@@ -105,6 +107,7 @@ defmodule CrmReactorWeb.AdminController do
   def email_subject(conn, %{"identifier" => identifier}) do
     case DataSubject.export_and_email(identifier) do
       {:ok, %{email_sent: true}} ->
+        AuditLog.record("email_export", identifier, "admin_api")
         json(conn, %{success: true, message: "Export envoyé par email"})
 
       {:ok, %{email_sent: false}} ->
@@ -125,6 +128,7 @@ defmodule CrmReactorWeb.AdminController do
   def erase_subject(conn, %{"identifier" => identifier}) do
     case DataSubject.erase(identifier) do
       {:ok, _} ->
+        AuditLog.record("erase", identifier, "admin_api")
         json(conn, %{success: true, erased: identifier})
 
       {:error, :not_found} ->
@@ -137,6 +141,7 @@ defmodule CrmReactorWeb.AdminController do
          {id, ""} <- Integer.parse(contact_id) do
       case DataSubject.erase_contact(schema, id) do
         {:ok, _} ->
+          AuditLog.record("erase_contact", contact_id, "admin_api", %{schema: schema})
           json(conn, %{success: true, contact_id: contact_id})
 
         {:error, :not_found} ->

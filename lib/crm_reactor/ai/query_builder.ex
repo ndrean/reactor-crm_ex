@@ -99,14 +99,14 @@ defmodule CrmReactor.AI.QueryBuilder do
         {field, type}
       end)
 
-    allowed = Enum.map(fields, fn {f, _} -> Atom.to_string(f) end)
+    field_map = Map.new(fields, fn {f, _} -> {Atom.to_string(f), f} end)
 
     desc =
       Enum.map_join(fields, "\n", fn {field, type} ->
         "- #{field} (#{format_type(type)})"
       end)
 
-    {table_name, desc, allowed}
+    {table_name, desc, field_map}
   end
 
   defp format_type(:string), do: "text"
@@ -174,11 +174,11 @@ defmodule CrmReactor.AI.QueryBuilder do
     end
   end
 
-  defp validate_filters(filters, allowed_fields) when is_list(filters) do
+  defp validate_filters(filters, field_map) when is_list(filters) do
     invalid =
       Enum.reject(filters, fn f ->
         is_binary(f["field"]) and
-          f["field"] in allowed_fields and
+          is_map_key(field_map, f["field"]) and
           f["op"] in @allowed_ops
       end)
 
@@ -190,19 +190,16 @@ defmodule CrmReactor.AI.QueryBuilder do
 
   defp validate_filters(_, _), do: {:error, :invalid_format}
 
-  defp compile_query(schema_module, filters, allowed_fields) do
+  defp compile_query(schema_module, filters, field_map) do
     Enum.reduce(filters, from(s in schema_module), fn filter, query ->
-      field_str = filter["field"]
+      case Map.fetch(field_map, filter["field"]) do
+        {:ok, field} ->
+          type = schema_module.__schema__(:type, field)
+          value = cast_value(type, filter["value"])
+          apply_condition(query, field, filter["op"], value)
 
-      if field_str in allowed_fields do
-        field = String.to_existing_atom(field_str)
-        type = schema_module.__schema__(:type, field)
-        value = cast_value(type, filter["value"])
-        apply_condition(query, field, filter["op"], value)
-      else
-        # coveralls-ignore-start
-        query
-        # coveralls-ignore-stop
+        :error ->
+          query
       end
     end)
   end
@@ -228,18 +225,20 @@ defmodule CrmReactor.AI.QueryBuilder do
   defp apply_condition(query, field, "<", value),
     do: from(q in query, where: field(q, ^field) < ^value)
 
-  defp apply_sort(query, %{"sort_by" => field, "sort_dir" => "desc"}, allowed)
+  defp apply_sort(query, %{"sort_by" => field, "sort_dir" => "desc"}, field_map)
        when is_binary(field) and field != "" do
-    if field in allowed,
-      do: from(q in query, order_by: [desc: field(q, ^String.to_existing_atom(field))]),
-      else: query
+    case Map.fetch(field_map, field) do
+      {:ok, atom_field} -> from(q in query, order_by: [desc: field(q, ^atom_field)])
+      :error -> query
+    end
   end
 
-  defp apply_sort(query, %{"sort_by" => field}, allowed)
+  defp apply_sort(query, %{"sort_by" => field}, field_map)
        when is_binary(field) and field != "" do
-    if field in allowed,
-      do: from(q in query, order_by: [asc: field(q, ^String.to_existing_atom(field))]),
-      else: query
+    case Map.fetch(field_map, field) do
+      {:ok, atom_field} -> from(q in query, order_by: [asc: field(q, ^atom_field)])
+      :error -> query
+    end
   end
 
   defp apply_sort(query, _, _), do: query

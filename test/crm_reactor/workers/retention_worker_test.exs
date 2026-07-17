@@ -9,10 +9,10 @@ defmodule CrmReactor.Workers.RetentionWorkerTest do
   setup do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
-    fixture
+    Map.put(fixture, :tenant_map, TestFixtures.tenant_map(fixture))
   end
 
-  defp create_log(user_id) do
+  defp create_log(user_id, tenant_map) do
     Reactor.run(CrmReactor.Reactors.MasterIngest, %{
       user_id: user_id,
       raw_input: "cherche Marie",
@@ -20,7 +20,7 @@ defmodule CrmReactor.Workers.RetentionWorkerTest do
       channel: :http,
       job_id: nil,
       attachment: nil,
-      tenant_override: nil
+      tenant: tenant_map
     })
   end
 
@@ -28,8 +28,12 @@ defmodule CrmReactor.Workers.RetentionWorkerTest do
     Repo.query!("UPDATE #{schema}.execution_logs SET logged_at = NOW() - INTERVAL '181 days'")
   end
 
-  test "anonymizes execution logs older than 180 days", %{user_id: user_id, tenant: tenant} do
-    create_log(user_id)
+  test "anonymizes execution logs older than 180 days", %{
+    user_id: user_id,
+    tenant: tenant,
+    tenant_map: tenant_map
+  } do
+    create_log(user_id, tenant_map)
     backdate_logs(tenant.schema_name)
 
     assert :ok = perform_job(RetentionWorker, %{})
@@ -40,8 +44,8 @@ defmodule CrmReactor.Workers.RetentionWorkerTest do
     assert Enum.all?(logs, &(&1.output == "[RETAINED]"))
   end
 
-  test "leaves recent logs untouched", %{user_id: user_id, tenant: tenant} do
-    create_log(user_id)
+  test "leaves recent logs untouched", %{user_id: user_id, tenant: tenant, tenant_map: tenant_map} do
+    create_log(user_id, tenant_map)
 
     assert :ok = perform_job(RetentionWorker, %{})
 
@@ -49,8 +53,12 @@ defmodule CrmReactor.Workers.RetentionWorkerTest do
     assert log.raw_input == "cherche Marie"
   end
 
-  test "does not re-anonymize already retained logs", %{user_id: user_id, tenant: tenant} do
-    create_log(user_id)
+  test "does not re-anonymize already retained logs", %{
+    user_id: user_id,
+    tenant: tenant,
+    tenant_map: tenant_map
+  } do
+    create_log(user_id, tenant_map)
     backdate_logs(tenant.schema_name)
 
     Repo.query!(
@@ -64,8 +72,8 @@ defmodule CrmReactor.Workers.RetentionWorkerTest do
     assert log.raw_input == "[RETAINED]"
   end
 
-  test "skips erased logs", %{user_id: user_id, tenant: tenant} do
-    create_log(user_id)
+  test "skips erased logs", %{user_id: user_id, tenant: tenant, tenant_map: tenant_map} do
+    create_log(user_id, tenant_map)
     backdate_logs(tenant.schema_name)
 
     Repo.query!(

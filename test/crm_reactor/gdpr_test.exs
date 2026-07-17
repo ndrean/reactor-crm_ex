@@ -12,7 +12,7 @@ defmodule CrmReactor.GDPRTest do
   setup do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
-    fixture
+    Map.put(fixture, :tenant_map, TestFixtures.tenant_map(fixture))
   end
 
   describe "export/1" do
@@ -31,7 +31,11 @@ defmodule CrmReactor.GDPRTest do
   end
 
   describe "erase/1" do
-    test "redacts execution logs and removes user mapping", %{user_id: uid, tenant: tenant} do
+    test "redacts execution logs and removes user mapping", %{
+      user_id: uid,
+      tenant: tenant,
+      tenant_map: tenant_map
+    } do
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: uid,
         raw_input: "cherche Marie",
@@ -39,7 +43,7 @@ defmodule CrmReactor.GDPRTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
       {:ok, _} = DataSubject.erase(uid)
@@ -48,7 +52,7 @@ defmodule CrmReactor.GDPRTest do
       assert Enum.all?(logs, &(&1.status == "erased"))
       assert Enum.all?(logs, &(&1.raw_input == "[REDACTED]"))
 
-      assert Repo.all(from(m in UserMapping, where: m.user_identifier == ^uid)) == []
+      assert Repo.all(from(m in UserMapping, where: m.email == ^uid)) == []
     end
 
     test "returns error for unknown user" do
@@ -57,7 +61,11 @@ defmodule CrmReactor.GDPRTest do
   end
 
   describe "erase_contact/2" do
-    test "deletes contact and redacts matching logs", %{user_id: uid, tenant: tenant} do
+    test "deletes contact and redacts matching logs", %{
+      user_id: uid,
+      tenant: tenant,
+      tenant_map: tenant_map
+    } do
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: uid,
         raw_input: "cherche Marie",
@@ -65,7 +73,7 @@ defmodule CrmReactor.GDPRTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
       [marie | _] =
@@ -85,10 +93,9 @@ defmodule CrmReactor.GDPRTest do
   end
 
   describe "export_and_email/1" do
-    test "with no user_email returns email_sent: false", %{user_id: uid} do
+    test "with email returns email_sent: true", %{user_id: uid} do
       {:ok, data} = DataSubject.export_and_email(uid)
-      # provision_test_tenant does not set user_email → nil branch
-      assert data.email_sent == false
+      assert data.email_sent == true
       assert data.user_identifier == uid
     end
 

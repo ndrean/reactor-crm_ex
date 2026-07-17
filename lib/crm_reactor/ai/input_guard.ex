@@ -11,7 +11,7 @@ defmodule CrmReactor.AI.InputGuard do
     ~r/\bDROP\s+TABLE\b/i,
     ~r/\bDROP\s+SCHEMA\b/i,
     ~r/\bDELETE\s+FROM\b/i,
-    ~r/\bUPDATE\s+.*\bSET\b/i,
+    ~r/\bUPDATE\s+[^;]*\bSET\b/i,
     ~r/\bINSERT\s+INTO\b/i,
     ~r/\bTRUNCATE\b/i,
     ~r/;\s*(DROP|DELETE|UPDATE|INSERT|ALTER|GRANT)/i,
@@ -20,7 +20,15 @@ defmodule CrmReactor.AI.InputGuard do
     ~r/\bUNION\s+(ALL\s+)?SELECT\b/i
   ]
 
+  @max_input_bytes 4_096
+
   @spec validate(String.t()) :: :ok | {:rejected, String.t()}
+  def validate(text) when byte_size(text) > @max_input_bytes do
+    Logger.warning("Input rejected: #{byte_size(text)} bytes exceeds #{@max_input_bytes} limit")
+    :telemetry.execute([:crm_reactor, :ai, :injection_blocked], %{count: 1}, %{})
+    {:rejected, "Requête non autorisée."}
+  end
+
   def validate(text) do
     case Enum.find(@sql_patterns, &Regex.match?(&1, text)) do
       nil ->

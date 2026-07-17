@@ -10,42 +10,40 @@ defmodule CrmReactor.Emails.GdprExportEmailTest do
 
   setup do
     tid = "gdpr_email_#{System.unique_integer([:positive])}"
-    user_id = "7777777777"
+    email = "subject@gdprcorp.fr"
+    telegram_id = "7777777777"
 
     {:ok, tenant} =
-      Provisioner.provision(tid, "GDPR Corp", user_id, user_email: "subject@gdprcorp.fr")
+      Provisioner.provision(tid, "GDPR Corp", telegram_id, email: email, telegram_id: telegram_id)
 
     on_exit(fn -> Provisioner.drop_tenant(tenant) end)
-    %{tenant: tenant, user_id: user_id}
+    %{tenant: tenant, email: email, telegram_id: telegram_id}
   end
 
-  test "export_and_email/1 sends personal data to user_email", %{user_id: user_id} do
-    {:ok, result} = DataSubject.export_and_email(user_id)
+  test "export_and_email/1 sends personal data to email via telegram_id lookup", %{
+    telegram_id: tg_id,
+    email: email
+  } do
+    {:ok, result} = DataSubject.export_and_email(tg_id)
 
     assert result.email_sent == true
-    assert result.user_identifier == user_id
+    assert result.user_identifier == tg_id
 
-    assert_email_sent(fn email ->
-      assert email.subject == "Vos données personnelles CRM – GDPR Corp"
-      assert email.to == [{"", "subject@gdprcorp.fr"}]
-      assert length(email.attachments) == 1
-      [att] = email.attachments
+    assert_email_sent(fn em ->
+      assert em.subject == "Vos données personnelles CRM – GDPR Corp"
+      assert em.to == [{"", email}]
+      assert length(em.attachments) == 1
+      [att] = em.attachments
       assert att.filename =~ "donnees_personnelles"
       assert att.content_type == "application/json"
     end)
   end
 
-  test "export_and_email/1 returns email_sent: false when no user_email registered" do
-    tid = "gdpr_noemail_#{System.unique_integer([:positive])}"
-    user_id = "8888888888"
-    {:ok, tenant} = Provisioner.provision(tid, "No Email Corp", user_id)
-    on_exit(fn -> Provisioner.drop_tenant(tenant) end)
+  test "export_and_email/1 sends data via email lookup", %{email: email} do
+    {:ok, result} = DataSubject.export_and_email(email)
 
-    {:ok, result} = DataSubject.export_and_email(user_id)
-
-    assert result.email_sent == false
-    assert result.user_identifier == user_id
-    assert_no_email_sent()
+    assert result.email_sent == true
+    assert result.user_identifier == email
   end
 
   test "export_and_email/1 returns error for unknown user" do

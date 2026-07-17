@@ -4,7 +4,7 @@ defmodule CrmReactor.Accounts do
   import Ecto.Query
 
   alias CrmReactor.Accounts.{Account, AccountToken}
-  alias CrmReactor.Emails.{InviteEmail, PasswordResetEmail}
+  alias CrmReactor.Emails.{InviteEmail, MagicLinkEmail, PasswordResetEmail}
   alias CrmReactor.Mailer
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.{TenantCache, UserMapping}
@@ -57,7 +57,7 @@ defmodule CrmReactor.Accounts do
 
     mapping_conflict =
       from(m in UserMapping,
-        where: m.user_email == ^email and m.tenant_id != ^tenant_id,
+        where: m.email == ^email and m.tenant_id != ^tenant_id,
         select: m.tenant_id,
         limit: 1
       )
@@ -114,27 +114,68 @@ defmodule CrmReactor.Accounts do
     {:ok, encoded_token}
   end
 
-  def accept_invite(token, password) do
+  def accept_invite(token, password) when is_binary(password) do
+    accept_invite(token, %{password: password, password_confirmation: password})
+  end
+
+  def accept_invite(token, %{} = password_attrs) do
     with {:ok, query} <- AccountToken.verify_invite_token_query(token),
          %Account{} = account <- Repo.one(query) do
-      Repo.transaction(fn ->
-        updated =
-          account
-          |> Account.password_changeset(%{password: password})
-          |> Repo.update!()
+      changeset = Account.password_changeset(account, password_attrs)
 
-        # Clean up all invite tokens for this account
-        from(t in AccountToken,
-          where: t.account_id == ^account.id and t.context == "invite"
-        )
-        |> Repo.delete_all()
+      if changeset.valid? do
+        Repo.transaction(fn ->
+          updated = Repo.update!(changeset)
 
-        updated
-      end)
-      |> case do
-        {:ok, account} -> {:ok, account}
-        {:error, reason} -> {:error, reason}
+          from(t in AccountToken,
+            where: t.account_id == ^account.id and t.context == "invite"
+          )
+          |> Repo.delete_all()
+
+          updated
+        end)
+        |> case do
+          {:ok, account} -> {:ok, account}
+          {:error, reason} -> {:error, reason}
+        end
+      else
+        {:error, %{changeset | action: :update}}
       end
+    else
+      _ -> {:error, :invalid_token}
+    end
+  end
+
+  # ── Magic link login ──────────────────────────────────────────────────────
+
+  def deliver_magic_link_email(email, base_url) when is_binary(email) do
+    account =
+      from(a in Account, where: a.email == ^email and is_nil(a.suspended_at))
+      |> Repo.one()
+
+    if account do
+      {encoded_token, token_struct} = AccountToken.build_magic_link_token(account)
+      Repo.insert!(token_struct)
+
+      magic_link_url = "#{base_url}/login/magic/#{encoded_token}"
+      email_msg = MagicLinkEmail.build(account.email, magic_link_url)
+      Mailer.deliver(email_msg)
+    end
+
+    # Always return :ok to not leak account existence
+    :ok
+  end
+
+  def login_by_magic_link(encoded_token) do
+    with {:ok, query} <- AccountToken.verify_magic_link_token_query(encoded_token),
+         %Account{} = account <- Repo.one(query) do
+      # Delete all magic_link tokens for this account (single-use)
+      from(t in AccountToken,
+        where: t.account_id == ^account.id and t.context == "magic_link"
+      )
+      |> Repo.delete_all()
+
+      {:ok, account}
     else
       _ -> {:error, :invalid_token}
     end
@@ -169,7 +210,7 @@ defmodule CrmReactor.Accounts do
 
       # Delete associated user mapping
       from(m in UserMapping,
-        where: m.user_email == ^account.email and m.tenant_id == ^account.tenant_id
+        where: m.email == ^account.email and m.tenant_id == ^account.tenant_id
       )
       |> Repo.delete_all()
 
@@ -202,17 +243,44 @@ defmodule CrmReactor.Accounts do
     |> Repo.all()
   end
 
+  @doc """
+  Links a Telegram ID to an existing user mapping.
+  Triggers a TenantCache reload on success.
+  """
+  def link_telegram(email, tenant_id, telegram_id) do
+    case Repo.get_by(UserMapping, email: email, tenant_id: tenant_id) do
+      nil ->
+        {:error, :not_found}
+
+      mapping ->
+        mapping
+        |> UserMapping.changeset(%{telegram_id: telegram_id})
+        |> Repo.update()
+        |> tap(fn
+          {:ok, _} -> TenantCache.reload()
+          _ -> :ok
+        end)
+    end
+  end
+
   defp insert_user_with_mapping(attrs) do
     Repo.transaction(fn ->
       case %Account{} |> Account.invite_changeset(attrs) |> Repo.insert() do
         {:ok, account} ->
-          %UserMapping{}
-          |> UserMapping.changeset(%{
-            user_identifier: account.email,
-            tenant_id: account.tenant_id,
-            user_email: account.email
-          })
-          |> Repo.insert!()
+          # Skip mapping creation if one already exists for this email+tenant
+          # (e.g. telegram user was provisioned first)
+          case Repo.get_by(UserMapping, email: account.email) do
+            %{tenant_id: tenant_id} when tenant_id == account.tenant_id ->
+              :ok
+
+            nil ->
+              %UserMapping{}
+              |> UserMapping.changeset(%{
+                email: account.email,
+                tenant_id: account.tenant_id
+              })
+              |> Repo.insert!()
+          end
 
           account
 

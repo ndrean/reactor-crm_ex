@@ -92,10 +92,9 @@ graph TB
     T[Telegram Webhook] -->|async| O[Oban IngestWorker]
     O -->|3 retries| R
 
-    R --> RT[ResolveTenant]
     R --> TR[Transcribe]
     R --> LE[LogExecution]
-    RT --> CI[ClassifyIntent]
+    TR --> CI[ClassifyIntent]
     TR --> CI
     CI --> DM[DispatchModule]
     LE --> DM
@@ -155,12 +154,11 @@ flowchart TB
         input_channel>"Input channel"]
         input_job_id>"Input job_id"]
         input_attachment>"Input attachment"]
-        input_user_id -->|user_id|step_tenant
-        step_tenant["tenant(ResolveTenant)"]
+        input_tenant>"Input tenant"]
         input_raw_input -->|raw_input|step_text
         input_is_audio -->|is_audio|step_text
         step_text["text(Transcribe)"]
-        step_tenant -->|tenant|step_log
+        input_tenant -->|tenant|step_log
         input_raw_input -->|raw_input|step_log
         input_channel -->|channel|step_log
         input_user_id -->|user_id|step_log
@@ -168,11 +166,11 @@ flowchart TB
         step_log["log(LogExecution)"]
         step_text -->|text|step_classify
         input_attachment -->|attachment|step_classify
-        step_tenant -->|tenant|step_classify
+        input_tenant -->|tenant|step_classify
         input_user_id -->|user_id|step_classify
         step_classify["classification(ClassifyIntent)"]
         step_classify -->|classification|step_result
-        step_tenant -->|tenant|step_result
+        input_tenant -->|tenant|step_result
         input_channel -->|channel|step_result
         input_user_id -->|user_id|step_result
         step_log -->|log|step_result
@@ -180,7 +178,7 @@ flowchart TB
         step_result["result(DispatchModule)"]
         step_result -->|result|step_finalize
         step_log -->|log|step_finalize
-        step_tenant -->|tenant|step_finalize
+        input_tenant -->|tenant|step_finalize
         step_classify -->|classification|step_finalize
         input_attachment -->|attachment|step_finalize
         input_user_id -->|user_id|step_finalize

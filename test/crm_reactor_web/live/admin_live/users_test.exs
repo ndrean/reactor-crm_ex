@@ -3,8 +3,8 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
 
   import Phoenix.LiveViewTest
 
-  alias CrmReactor.Tenants.{Provisioner, UserMapping}
   alias CrmReactor.Repo
+  alias CrmReactor.Tenants.{Provisioner, UserMapping}
 
   setup %{conn: conn} do
     %{conn: conn} = register_and_log_in_admin(conn)
@@ -21,7 +21,7 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
       {:ok, _view, html} = live(conn, ~p"/admin/users")
       assert html =~ "Create User Account"
       assert html =~ "User Accounts"
-      assert html =~ "External User Mappings"
+      assert html =~ "Telegram Linkages"
     end
   end
 
@@ -46,7 +46,6 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
 
   describe "toggle_suspend event" do
     test "suspends and reactivates user account", %{conn: conn, tenant_id: tid} do
-      # Create a user account to suspend
       account =
         create_account(%{
           email: "suspend_#{System.unique_integer([:positive])}@test.com",
@@ -56,7 +55,6 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
 
       {:ok, view, _html} = live(conn, ~p"/admin/users")
 
-      # Suspend using phx-value-id with quoted selector
       view
       |> element(~s|button[phx-click=toggle_suspend][phx-value-id="#{account.id}"]|)
       |> render_click()
@@ -66,20 +64,21 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
   end
 
   describe "add_user event" do
-    test "adds user mapping", %{conn: conn, tenant_id: tid} do
+    test "adds user mapping with email and telegram_id", %{conn: conn, tenant_id: tid} do
       {:ok, view, _html} = live(conn, ~p"/admin/users")
-      uid = "tg_#{System.unique_integer([:positive])}"
+      email = "tguser_#{System.unique_integer([:positive])}@test.com"
+      tg_id = "#{System.unique_integer([:positive])}"
 
       view
       |> element("#add-user-form")
       |> render_submit(%{
         "tenant_id" => tid,
-        "user_identifier" => uid,
-        "user_email" => ""
+        "email" => email,
+        "telegram_id" => tg_id
       })
 
       html = render(view)
-      assert html =~ uid
+      assert html =~ email
       assert html =~ "added to #{tid}"
     end
   end
@@ -88,7 +87,6 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
     test "duplicate email shows error flash", %{conn: conn, tenant_id: tid} do
       email = "dup_#{System.unique_integer([:positive])}@test.com"
 
-      # Create the first account
       {:ok, _} =
         CrmReactor.Accounts.create_user_account(%{
           email: email,
@@ -139,13 +137,11 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
           tenant_id: tid
         })
 
-      # Suspend first
       {:ok, suspended} = CrmReactor.Accounts.suspend_account(account)
       assert suspended.suspended_at
 
       {:ok, view, _html} = live(conn, ~p"/admin/users")
 
-      # Click Reactivate
       view
       |> element(~s|button[phx-click=toggle_suspend][phx-value-id="#{account.id}"]|)
       |> render_click()
@@ -177,13 +173,12 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
 
   describe "remove_mapping event" do
     test "removes user mapping", %{conn: conn, tenant_id: tid} do
-      # Insert a mapping to remove
       {:ok, mapping} =
         %UserMapping{}
         |> UserMapping.changeset(%{
           tenant_id: tid,
-          user_identifier: "remove_me_#{System.unique_integer([:positive])}",
-          platform: "test"
+          email: "remove_me_#{System.unique_integer([:positive])}@test.com",
+          telegram_id: "#{System.unique_integer([:positive])}"
         })
         |> Repo.insert()
 

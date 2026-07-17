@@ -85,13 +85,13 @@ defmodule CrmReactor.GDPR.DataSubject do
     end
   end
 
-  defp resolve(user_identifier) do
+  defp resolve(identifier) do
     query =
       from m in UserMapping,
         join: t in Tenant,
         on: t.tenant_id == m.tenant_id,
-        where: m.user_identifier == ^user_identifier,
-        select: {t, t.schema_name, m.user_email}
+        where: m.email == ^identifier or m.telegram_id == ^identifier,
+        select: {t, t.schema_name, m.email}
 
     Repo.one(query)
   end
@@ -160,8 +160,8 @@ defmodule CrmReactor.GDPR.DataSubject do
     )
   end
 
-  defp remove_user_mapping(user_identifier) do
-    from(m in UserMapping, where: m.user_identifier == ^user_identifier)
+  defp remove_user_mapping(identifier) do
+    from(m in UserMapping, where: m.email == ^identifier or m.telegram_id == ^identifier)
     |> Repo.delete_all()
   end
 

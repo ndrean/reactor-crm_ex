@@ -16,10 +16,9 @@ defmodule CrmReactorWeb.ChatLiveTest do
       })
 
     # UserMapping is still needed for Mutations.confirm/3 (confirm/reject flows).
-    # The Reactor pipeline itself no longer needs it (uses tenant_override).
     %UserMapping{}
     |> UserMapping.changeset(%{
-      user_identifier: account.email,
+      email: account.email,
       tenant_id: fixture.tenant.tenant_id
     })
     |> Repo.insert!()
@@ -98,7 +97,7 @@ defmodule CrmReactorWeb.ChatLiveTest do
     view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "cherche Marie"})
     html = render(view)
 
-    # Reactor resolved tenant via tenant_override, ran the pipeline, returned results
+    # Reactor resolved tenant at transport boundary, ran the pipeline, returned results
     assert html =~ "Marie"
     assert html =~ "Dupont"
     refute html =~ "erreur"

@@ -32,13 +32,16 @@ defmodule CrmReactorWeb.AdminLive.Tenants do
         <input type="text" name="company_name" required placeholder="Acme Corp" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
       </div>
       <div>
-        <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Admin Email</label>
-        <input type="email" name="admin_email" placeholder="admin@acme.com" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
+        <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;font-weight:500;margin-bottom:4px;">
+          Admin Email
+          <span id="admin-email-tip" phx-hook="Tippy" data-tippy-content="Recipient address for data export and cost reports requested by users of this tenant." data-tippy-placement="right" style="cursor:help;color:#999;font-size:0.75rem;">&#9432;</span>
+        </label>
+        <input type="email" name="admin_email" placeholder="admin@acme.com" style="display:block;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
       </div>
       <button type="submit" style="padding:8px 20px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:0.875rem;cursor:pointer;">Provision</button>
     </.admin_form>
 
-    <.admin_table rows={@streams.tenants} cols={["Tenant ID", "Company", "Schema", "Active", "Webhook", "Actions"]}>
+    <.admin_table rows={@streams.tenants} cols={["Tenant ID", "Company", "Schema", "Active", "Webhook URL", "Actions"]}>
       <:col :let={{_id, tenant}}>
         <td style="padding:10px 16px;font-size:0.875rem;font-weight:500;"><%= tenant.tenant_id %></td>
         <td style="padding:10px 16px;font-size:0.875rem;"><%= tenant.company_name %></td>
@@ -54,11 +57,14 @@ defmodule CrmReactorWeb.AdminLive.Tenants do
           </button>
         </td>
         <td style="padding:10px 16px;font-size:0.875rem;">
-          <form phx-submit="set_webhook" style="display:flex;gap:6px;">
-            <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
-            <input type="text" name="webhook_url" value={tenant.webhook_url || ""} placeholder="https://..." style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.8rem;width:200px;" />
-            <button type="submit" style="padding:4px 10px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;font-size:0.8rem;cursor:pointer;">Set</button>
-          </form>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span id={"webhook-tip-#{tenant.tenant_id}"} phx-hook="Tippy" data-tippy-content="When set, workflow results (contact created, todo completed, etc.) are POSTed here as HMAC-signed JSON. Used for external integrations." data-tippy-placement="top" style="cursor:help;color:#999;font-size:0.75rem;">&#9432;</span>
+            <form phx-submit="set_webhook" style="display:flex;gap:6px;">
+              <input type="hidden" name="tenant_id" value={tenant.tenant_id} />
+              <input type="text" name="webhook_url" value={tenant.webhook_url || ""} placeholder="https://..." style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:0.8rem;width:200px;" />
+              <button type="submit" style="padding:4px 10px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;font-size:0.8rem;cursor:pointer;">Set</button>
+            </form>
+          </div>
         </td>
         <td style="padding:10px 16px;font-size:0.875rem;">-</td>
       </:col>

@@ -1,8 +1,9 @@
 defmodule CrmReactor.TenantsTest do
   use CrmReactor.DataCase
 
-  alias CrmReactor.{Tenants, TestFixtures}
+  alias CrmReactor.Tenants
   alias CrmReactor.Tenants.Provisioner
+  alias CrmReactor.TestFixtures
 
   setup do
     fixture = TestFixtures.provision_test_tenant()
@@ -24,5 +25,22 @@ defmodule CrmReactor.TenantsTest do
     {:ok, _} = Provisioner.toggle_active(tenant.tenant_id, false)
 
     assert {:error, :unknown_user} = Tenants.schema_for_user(user_id)
+  end
+
+  describe "resolve_canonical_id/1" do
+    alias CrmReactor.Tenants.TenantCache
+
+    test "email resolves to itself", %{user_id: email} do
+      assert TenantCache.resolve_canonical_id(email) == email
+    end
+
+    test "telegram_id resolves to canonical email", %{user_id: email, telegram_id: tg_id} do
+      assert TenantCache.resolve_canonical_id(tg_id) == email
+    end
+
+    test "unknown identifier returns itself" do
+      unknown = "unknown_#{System.unique_integer([:positive])}"
+      assert TenantCache.resolve_canonical_id(unknown) == unknown
+    end
   end
 end

@@ -31,7 +31,8 @@ defmodule CrmReactor.E2ETest do
       |> post("/api/admin/provision", %{
         tenant_id: tid,
         company_name: "E2E Test Corp",
-        telegram_chat_id: user_id
+        telegram_chat_id: user_id,
+        email: "e2e_test@example.com"
       })
       |> json_response(200)
 
@@ -70,7 +71,7 @@ defmodule CrmReactor.E2ETest do
       CrmReactor.Repo.query!("DELETE FROM global_registry.tenants WHERE tenant_id = '#{tid}'")
 
       CrmReactor.Repo.query!(
-        "DELETE FROM global_registry.user_mappings WHERE user_identifier = '#{user_id}'"
+        "DELETE FROM global_registry.user_mappings WHERE email = 'e2e_test@example.com'"
       )
     end)
 

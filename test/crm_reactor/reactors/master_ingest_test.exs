@@ -6,10 +6,10 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
   setup do
     fixture = TestFixtures.provision_test_tenant()
     on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
-    fixture
+    Map.put(fixture, :tenant_map, TestFixtures.tenant_map(fixture))
   end
 
-  test "search contacts by name", %{user_id: user_id} do
+  test "search contacts by name", %{user_id: user_id, tenant_map: tenant_map} do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -18,14 +18,14 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     assert result.output =~ "Marie"
     assert result.output =~ "Dupont"
   end
 
-  test "count contacts", %{user_id: user_id} do
+  test "count contacts", %{user_id: user_id, tenant_map: tenant_map} do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -34,13 +34,13 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     assert result.output =~ "2"
   end
 
-  test "list todos", %{user_id: user_id} do
+  test "list todos", %{user_id: user_id, tenant_map: tenant_map} do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -49,26 +49,16 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     assert result.output =~ "Appeler fournisseur"
   end
 
-  test "unknown user rejected" do
-    assert {:error, %{errors: [%{error: :unknown_user} | _]}} =
-             Reactor.run(CrmReactor.Reactors.MasterIngest, %{
-               user_id: "0000000000",
-               raw_input: "hello",
-               is_audio: false,
-               channel: :http,
-               job_id: nil,
-               attachment: nil,
-               tenant_override: nil
-             })
-  end
-
-  test "help / unrecognized input returns help message", %{user_id: user_id} do
+  test "help / unrecognized input returns help message", %{
+    user_id: user_id,
+    tenant_map: tenant_map
+  } do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -77,13 +67,13 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     assert result.output =~ "contacts"
   end
 
-  test "mutation requires confirmation", %{user_id: user_id} do
+  test "mutation requires confirmation", %{user_id: user_id, tenant_map: tenant_map} do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -92,14 +82,17 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     assert result.action == "pending"
     assert result.pending_id != nil
   end
 
-  test "data export without admin_email asks for email via pending loop", %{user_id: user_id} do
+  test "data export without admin_email asks for email via pending loop", %{
+    user_id: user_id,
+    tenant_map: tenant_map
+  } do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -108,7 +101,7 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         channel: :http,
         job_id: "http-#{Ecto.UUID.generate()}",
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     assert result.action == "pending"
@@ -116,7 +109,10 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
     assert result.output =~ "email"
   end
 
-  test "multi-intent message executes both steps and combines output", %{user_id: user_id} do
+  test "multi-intent message executes both steps and combines output", %{
+    user_id: user_id,
+    tenant_map: tenant_map
+  } do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -125,7 +121,7 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
         channel: :http,
         job_id: nil,
         attachment: nil,
-        tenant_override: nil
+        tenant: tenant_map
       })
 
     assert result.output =~ "Contact créé"

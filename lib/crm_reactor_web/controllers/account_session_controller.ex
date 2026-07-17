@@ -17,6 +17,18 @@ defmodule CrmReactorWeb.AccountSessionController do
     end
   end
 
+  def magic_link(conn, %{"token" => token}) do
+    case CrmReactor.Accounts.login_by_magic_link(token) do
+      {:ok, account} ->
+        AccountAuth.log_in_account(conn, account)
+
+      {:error, :invalid_token} ->
+        conn
+        |> put_flash(:error, "Lien invalide ou expiré.")
+        |> redirect(to: ~p"/login")
+    end
+  end
+
   def delete(conn, _params) do
     AccountAuth.log_out_account(conn)
   end

@@ -16,7 +16,6 @@ defmodule CrmReactor.Tenants.Provisioner do
   defp do_provision(tenant_id, company_name, user_identifier, opts) do
     schema_name = "customer_#{tenant_id}"
     admin_email = Keyword.get(opts, :admin_email)
-    user_email = Keyword.get(opts, :user_email)
 
     Repo.transaction(fn ->
       tenant =
@@ -32,10 +31,7 @@ defmodule CrmReactor.Tenants.Provisioner do
         end
 
       create_tenant_schema(schema_name)
-
-      if user_identifier do
-        insert_user_mapping!(tenant_id, user_identifier, user_email)
-      end
+      insert_user_mapping!(tenant_id, user_identifier, opts)
 
       tenant
     end)
@@ -206,16 +202,59 @@ defmodule CrmReactor.Tenants.Provisioner do
     Enum.each(indexes, &Repo.query!/1)
   end
 
-  defp insert_user_mapping!(tenant_id, user_identifier, user_email) do
-    case %UserMapping{}
-         |> UserMapping.changeset(%{
-           user_identifier: user_identifier,
-           tenant_id: tenant_id,
-           user_email: user_email
-         })
-         |> Repo.insert() do
-      {:ok, _mapping} -> :ok
-      {:error, changeset} -> Repo.rollback(changeset)
+  defp insert_user_mapping!(tenant_id, user_identifier, opts) do
+    {email, telegram_id} = resolve_identity(user_identifier, opts)
+
+    if email do
+      case Repo.get_by(UserMapping, email: email) do
+        nil ->
+          case %UserMapping{}
+               |> UserMapping.changeset(%{
+                 email: email,
+                 tenant_id: tenant_id,
+                 telegram_id: telegram_id
+               })
+               |> Repo.insert() do
+            {:ok, _} -> :ok
+            {:error, changeset} -> Repo.rollback(changeset)
+          end
+
+        %{tenant_id: ^tenant_id} = existing ->
+          # Same tenant — update telegram_id if provided and not already set
+          if telegram_id && is_nil(existing.telegram_id) do
+            case existing
+                 |> UserMapping.changeset(%{telegram_id: telegram_id})
+                 |> Repo.update() do
+              {:ok, _} -> :ok
+              {:error, changeset} -> Repo.rollback(changeset)
+            end
+          end
+
+        %{tenant_id: other} ->
+          Repo.rollback(%Ecto.Changeset{
+            action: :insert,
+            errors: [
+              email:
+                {"is already associated with tenant '#{other}'", [validation: :tenant_conflict]}
+            ],
+            valid?: false
+          })
+      end
+    end
+  end
+
+  defp resolve_identity(nil, opts) do
+    {Keyword.get(opts, :email), Keyword.get(opts, :telegram_id)}
+  end
+
+  defp resolve_identity(id, opts) when is_binary(id) do
+    email = Keyword.get(opts, :email)
+    telegram_id = Keyword.get(opts, :telegram_id)
+
+    cond do
+      String.contains?(id, "@") -> {email || id, telegram_id}
+      Regex.match?(~r/^\d+$/, id) -> {email || Keyword.get(opts, :user_email), telegram_id || id}
+      true -> {email, telegram_id}
     end
   end
 

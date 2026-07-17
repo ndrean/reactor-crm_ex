@@ -11,28 +11,31 @@ defmodule CrmReactorWeb.CrmController do
   import Ecto.Query
 
   def ingest(conn, %{"user_id" => user_id, "text" => text}) do
-    input = %{
-      user_id: user_id,
-      raw_input: text,
-      is_audio: false,
-      channel: :http,
-      job_id: "http-#{Ecto.UUID.generate()}",
-      attachment: nil,
-      tenant_override: nil
-    }
-
-    case Reactor.run(MasterIngest, input) do
-      {:ok, result} ->
-        json(conn, format_result(result))
-
-      {:error, %{errors: [%{error: :unknown_user} | _]}} ->
+    case TenantCache.lookup(user_id) do
+      {:error, :unknown_user} ->
         conn |> put_status(403) |> json(%{error: "Unknown user"})
 
-      # coveralls-ignore-next-line
-      {:error, reason} ->
-        Logger.error("Ingest failed: #{inspect(reason)}")
-        mark_log_failed(input, reason)
-        conn |> put_status(500) |> json(%{error: "Internal server error"})
+      {:ok, tenant} ->
+        input = %{
+          user_id: user_id,
+          raw_input: text,
+          is_audio: false,
+          channel: :http,
+          job_id: "http-#{Ecto.UUID.generate()}",
+          attachment: nil,
+          tenant: tenant
+        }
+
+        case Reactor.run(MasterIngest, input) do
+          {:ok, result} ->
+            json(conn, format_result(result))
+
+          # coveralls-ignore-next-line
+          {:error, reason} ->
+            Logger.error("Ingest failed: #{inspect(reason)}")
+            mark_log_failed(input, reason)
+            conn |> put_status(500) |> json(%{error: "Internal server error"})
+        end
     end
   end
 

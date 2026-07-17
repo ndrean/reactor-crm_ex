@@ -14,8 +14,8 @@ defmodule CrmReactorWeb.AdminLive.Users do
 
     users =
       from(u in UserMapping,
-        where: u.user_identifier not in ^account_emails,
-        order_by: [asc: u.tenant_id, asc: u.user_identifier]
+        where: u.email not in ^account_emails,
+        order_by: [asc: u.tenant_id, asc: u.email]
       )
       |> Repo.all()
 
@@ -93,7 +93,7 @@ defmodule CrmReactorWeb.AdminLive.Users do
       </:col>
     </.admin_table>
 
-    <h2 style="margin-top:32px;font-size:1.1rem;font-weight:600;">External User Mappings</h2>
+    <h2 style="margin-top:32px;font-size:1.1rem;font-weight:600;">Telegram Linkages</h2>
     <.admin_form id="add-user-form" phx_submit="add_user">
       <div>
         <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Tenant</label>
@@ -103,22 +103,22 @@ defmodule CrmReactorWeb.AdminLive.Users do
         </select>
       </div>
       <div>
-        <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">User Identifier</label>
-        <input type="text" name="user_identifier" required placeholder="telegram_chat_id or username" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
+        <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Email</label>
+        <input type="email" name="email" required placeholder="user@example.com" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
       </div>
       <div>
-        <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Email</label>
-        <input type="email" name="user_email" placeholder="user@example.com" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
+        <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Telegram ID</label>
+        <input type="text" name="telegram_id" required placeholder="123456789" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
       </div>
       <button type="submit" style="padding:8px 20px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:0.875rem;cursor:pointer;">Add User</button>
     </.admin_form>
 
-    <.admin_table rows={@streams.users} cols={["ID", "Tenant", "Identifier", "Email", "Actions"]}>
+    <.admin_table rows={@streams.users} cols={["ID", "Tenant", "Email", "Telegram ID", "Actions"]}>
       <:col :let={{_id, user}}>
         <td style="padding:10px 16px;font-size:0.875rem;color:#999;"><%= user.id %></td>
         <td style="padding:10px 16px;font-size:0.875rem;font-weight:500;"><%= user.tenant_id %></td>
-        <td style="padding:10px 16px;font-size:0.875rem;font-family:monospace;"><%= user.user_identifier %></td>
-        <td style="padding:10px 16px;font-size:0.875rem;"><%= user.user_email || "-" %></td>
+        <td style="padding:10px 16px;font-size:0.875rem;"><%= user.email %></td>
+        <td style="padding:10px 16px;font-size:0.875rem;font-family:monospace;"><%= user.telegram_id || "-" %></td>
         <td style="padding:10px 16px;font-size:0.875rem;">
           <button phx-click="remove_mapping" phx-value-id={user.id} style="padding:4px 10px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;" data-confirm="Remove this mapping? The user will lose access.">
             Remove
@@ -202,20 +202,39 @@ defmodule CrmReactorWeb.AdminLive.Users do
   end
 
   @impl true
-  def handle_event("add_user", %{"tenant_id" => tid, "user_identifier" => uid} = params, socket) do
-    user_email = if(params["user_email"] != "", do: params["user_email"])
-
-    case Accounts.check_email_tenant_conflict(user_email, tid) do
+  def handle_event(
+        "add_user",
+        %{"tenant_id" => tid, "email" => email, "telegram_id" => tg_id},
+        socket
+      ) do
+    case Accounts.check_email_tenant_conflict(email, tid) do
       {:error, existing} ->
         {:noreply,
          put_flash(
            socket,
            :error,
-           "#{user_email} is already associated with tenant '#{existing}'. Cannot add to '#{tid}'."
+           "#{email} is already associated with tenant '#{existing}'. Cannot add to '#{tid}'."
          )}
 
       :ok ->
-        insert_user_mapping(socket, tid, uid, user_email)
+        insert_user_mapping(socket, tid, email, tg_id)
+    end
+  end
+
+  def handle_event(
+        "link_telegram",
+        %{"email" => email, "tenant_id" => tid, "telegram_id" => tg_id},
+        socket
+      ) do
+    case Accounts.link_telegram(email, tid, tg_id) do
+      {:ok, _} ->
+        {:noreply, put_flash(socket, :info, "Telegram #{tg_id} linked to #{email}.")}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "No mapping found for #{email} in #{tid}.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to link Telegram ID.")}
     end
   end
 
@@ -227,27 +246,59 @@ defmodule CrmReactorWeb.AdminLive.Users do
     {:noreply,
      socket
      |> stream_delete(:users, mapping)
-     |> put_flash(:info, "Mapping for #{mapping.user_identifier} removed.")}
+     |> put_flash(:info, "Mapping for #{mapping.email} removed.")}
   end
 
-  defp insert_user_mapping(socket, tid, uid, user_email) do
-    attrs = %{tenant_id: tid, user_identifier: uid, user_email: user_email}
+  defp insert_user_mapping(socket, tid, email, telegram_id) do
+    tg = if telegram_id != "", do: telegram_id
 
-    case %UserMapping{} |> UserMapping.changeset(attrs) |> Repo.insert() do
-      {:ok, user} ->
-        TenantCache.reload()
+    case Repo.get_by(UserMapping, email: email) do
+      %{tenant_id: ^tid} = existing ->
+        # Same tenant — update telegram_id if provided
+        if tg && is_nil(existing.telegram_id) do
+          case existing |> UserMapping.changeset(%{telegram_id: tg}) |> Repo.update() do
+            {:ok, user} ->
+              TenantCache.reload()
 
+              {:noreply,
+               socket
+               |> stream_insert(:users, user)
+               |> put_flash(:info, "Telegram #{tg} linked to #{email}")}
+
+            {:error, changeset} ->
+              msg =
+                Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
+                |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
+
+              {:noreply, put_flash(socket, :error, msg)}
+          end
+        else
+          {:noreply, put_flash(socket, :error, "#{email} already has a Telegram ID linked.")}
+        end
+
+      %{tenant_id: other} ->
         {:noreply,
-         socket
-         |> stream_insert(:users, user)
-         |> put_flash(:info, "User #{uid} added to #{tid}")}
+         put_flash(socket, :error, "#{email} is already associated with tenant '#{other}'.")}
 
-      {:error, changeset} ->
-        msg =
-          Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
-          |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
+      nil ->
+        attrs = %{tenant_id: tid, email: email, telegram_id: tg}
 
-        {:noreply, put_flash(socket, :error, msg)}
+        case %UserMapping{} |> UserMapping.changeset(attrs) |> Repo.insert() do
+          {:ok, user} ->
+            TenantCache.reload()
+
+            {:noreply,
+             socket
+             |> stream_insert(:users, user)
+             |> put_flash(:info, "User #{email} added to #{tid}")}
+
+          {:error, changeset} ->
+            msg =
+              Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
+              |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
+
+            {:noreply, put_flash(socket, :error, msg)}
+        end
     end
   end
 end

@@ -2,7 +2,7 @@ defmodule CrmReactor.AccountsTest do
   use CrmReactor.DataCase
 
   alias CrmReactor.Accounts
-  alias CrmReactor.Accounts.Account
+  alias CrmReactor.Accounts.{Account, AccountToken}
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.UserMapping
 
@@ -100,8 +100,7 @@ defmodule CrmReactor.AccountsTest do
       %UserMapping{}
       |> UserMapping.changeset(%{
         tenant_id: "tenant_x",
-        user_identifier: "some_id",
-        user_email: email
+        email: email
       })
       |> Repo.insert!()
 
@@ -127,7 +126,7 @@ defmodule CrmReactor.AccountsTest do
       assert account.role == "user"
 
       # Mapping should exist
-      mapping = Repo.get_by(UserMapping, user_identifier: email)
+      mapping = Repo.get_by(UserMapping, email: email)
       assert mapping
       assert mapping.tenant_id == "test_tenant"
     end
@@ -145,7 +144,7 @@ defmodule CrmReactor.AccountsTest do
   # ── Invite flow ────────────────────────────────────────────────────────
 
   describe "accept_invite/2" do
-    test "sets password and confirms account" do
+    test "sets password and confirms account with matching passwords" do
       {:ok, account} =
         %Account{}
         |> Account.invite_changeset(%{
@@ -157,9 +156,51 @@ defmodule CrmReactor.AccountsTest do
         |> Repo.insert()
 
       {:ok, token} = Accounts.deliver_invite_email(account, "http://localhost:4002")
-      {:ok, updated} = Accounts.accept_invite(token, "newpassword123")
+
+      {:ok, updated} =
+        Accounts.accept_invite(token, %{
+          password: "newpassword123",
+          password_confirmation: "newpassword123"
+        })
+
       assert updated.confirmed_at
       assert Account.valid_password?(updated, "newpassword123")
+    end
+
+    test "returns changeset error on password mismatch" do
+      {:ok, account} =
+        %Account{}
+        |> Account.invite_changeset(%{
+          email: "inv_mm_#{System.unique_integer([:positive])}@test.com",
+          name: "Inv",
+          role: "user",
+          tenant_id: "test_tenant"
+        })
+        |> Repo.insert()
+
+      {:ok, token} = Accounts.deliver_invite_email(account, "http://localhost:4002")
+
+      assert {:error, %Ecto.Changeset{}} =
+               Accounts.accept_invite(token, %{
+                 password: "newpassword123",
+                 password_confirmation: "different456"
+               })
+    end
+
+    test "backward compat: accepts binary password" do
+      {:ok, account} =
+        %Account{}
+        |> Account.invite_changeset(%{
+          email: "inv_bc_#{System.unique_integer([:positive])}@test.com",
+          name: "Inv",
+          role: "user",
+          tenant_id: "test_tenant"
+        })
+        |> Repo.insert()
+
+      {:ok, token} = Accounts.deliver_invite_email(account, "http://localhost:4002")
+      {:ok, updated} = Accounts.accept_invite(token, "newpassword123")
+      assert updated.confirmed_at
     end
 
     test "returns error for invalid token" do
@@ -180,6 +221,61 @@ defmodule CrmReactor.AccountsTest do
       {:ok, token} = Accounts.deliver_invite_email(account, "http://localhost:4002")
       {:ok, _} = Accounts.accept_invite(token, "password123")
       assert {:error, :invalid_token} = Accounts.accept_invite(token, "password456")
+    end
+  end
+
+  # ── Magic link login ─────────────────────────────────────────────────
+
+  describe "deliver_magic_link_email/2" do
+    test "returns :ok for existing account" do
+      account = create_confirmed_account()
+      assert :ok = Accounts.deliver_magic_link_email(account.email, "http://localhost:4002")
+    end
+
+    test "returns :ok for unknown email (no leak)" do
+      assert :ok = Accounts.deliver_magic_link_email("nobody@test.com", "http://localhost:4002")
+    end
+
+    test "returns :ok for suspended account (no email sent)" do
+      account = create_confirmed_account()
+      {:ok, _} = Accounts.suspend_account(account)
+      assert :ok = Accounts.deliver_magic_link_email(account.email, "http://localhost:4002")
+    end
+  end
+
+  describe "login_by_magic_link/1" do
+    test "returns account for valid token" do
+      account = create_confirmed_account()
+      {encoded, token_struct} = AccountToken.build_magic_link_token(account)
+      Repo.insert!(token_struct)
+
+      assert {:ok, found} = Accounts.login_by_magic_link(encoded)
+      assert found.id == account.id
+    end
+
+    test "returns error for invalid token" do
+      assert {:error, :invalid_token} = Accounts.login_by_magic_link("badtoken")
+    end
+
+    test "token is single-use" do
+      account = create_confirmed_account()
+      {encoded, token_struct} = AccountToken.build_magic_link_token(account)
+      Repo.insert!(token_struct)
+
+      assert {:ok, _} = Accounts.login_by_magic_link(encoded)
+      assert {:error, :invalid_token} = Accounts.login_by_magic_link(encoded)
+    end
+
+    test "returns error for expired token" do
+      account = create_confirmed_account()
+      {encoded, token_struct} = AccountToken.build_magic_link_token(account)
+      inserted = Repo.insert!(token_struct)
+
+      # Manually expire the token
+      from(t in AccountToken, where: t.id == ^inserted.id)
+      |> Repo.update_all(set: [inserted_at: DateTime.add(DateTime.utc_now(), -20, :minute)])
+
+      assert {:error, :invalid_token} = Accounts.login_by_magic_link(encoded)
     end
   end
 
@@ -219,7 +315,7 @@ defmodule CrmReactor.AccountsTest do
       {:ok, _} = Accounts.delete_account(account)
 
       assert Repo.get(Account, account.id) == nil
-      assert Repo.get_by(UserMapping, user_identifier: email) == nil
+      assert Repo.get_by(UserMapping, email: email) == nil
     end
   end
 

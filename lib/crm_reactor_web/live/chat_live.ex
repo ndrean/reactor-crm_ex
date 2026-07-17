@@ -127,7 +127,7 @@ defmodule CrmReactorWeb.ChatLive do
         channel: :http,
         job_id: job_id,
         attachment: attachment,
-        tenant_override: socket.assigns.tenant
+        tenant: socket.assigns.tenant
       })
 
     case result do
@@ -145,13 +145,6 @@ defmodule CrmReactorWeb.ChatLive do
          |> assign(:loading, false)
          |> assign(:pending, pending)}
 
-      {:error, %{errors: [%{error: :unknown_user} | _]}} ->
-        {:noreply,
-         assign(socket,
-           loading: false,
-           error: "Identifiant inconnu. Vérifiez votre identifiant et réessayez."
-         )}
-
       {:error, reason} ->
         Logger.error("Reactor failed: #{inspect(reason)}")
 
@@ -163,16 +156,18 @@ defmodule CrmReactorWeb.ChatLive do
   defp consume_attachment(socket) do
     schema = socket.assigns.tenant.schema_name
 
-    with {[_ | _], []} <- uploaded_entries(socket, :attachment) do
-      [result] =
-        consume_uploaded_entries(socket, :attachment, fn %{path: path}, entry ->
-          content = File.read!(path)
-          store_attachment(schema, entry, content)
-        end)
+    case uploaded_entries(socket, :attachment) do
+      {[_ | _], []} ->
+        [result] =
+          consume_uploaded_entries(socket, :attachment, fn %{path: path}, entry ->
+            content = File.read!(path)
+            store_attachment(schema, entry, content)
+          end)
 
-      result
-    else
-      _ -> nil
+        result
+
+      _ ->
+        nil
     end
   end
 

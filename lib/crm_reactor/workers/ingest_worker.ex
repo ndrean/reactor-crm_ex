@@ -12,16 +12,27 @@ defmodule CrmReactor.Workers.IngestWorker do
 
   @impl true
   def perform(%Oban.Job{id: job_id, args: args}) do
-    input = %{
-      user_id: args["user_id"],
-      raw_input: args["text"],
-      is_audio: args["is_audio"] || false,
-      channel: to_channel(args["channel"]),
-      job_id: "oban-#{job_id}",
-      attachment: nil,
-      tenant_override: nil
-    }
+    raw_user_id = args["user_id"]
 
+    with {:ok, tenant} <- TenantCache.lookup(raw_user_id) do
+      # Normalize to canonical email so created_by/triggered_by are consistent
+      user_id = TenantCache.resolve_canonical_id(raw_user_id)
+
+      input = %{
+        user_id: user_id,
+        raw_input: args["text"],
+        is_audio: args["is_audio"] || false,
+        channel: to_channel(args["channel"]),
+        job_id: "oban-#{job_id}",
+        attachment: nil,
+        tenant: tenant
+      }
+
+      run_pipeline(input, args)
+    end
+  end
+
+  defp run_pipeline(input, args) do
     case Reactor.run(MasterIngest, input) do
       {:ok, result} ->
         case maybe_send_reply(args["channel"], args["chat_id"], result) do

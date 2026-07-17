@@ -49,6 +49,22 @@ defmodule CrmReactorWeb.LoginLiveTest do
       assert html =~ "phx-trigger-action"
     end
 
+    test "renders magic link form", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/login")
+      assert html =~ "Envoyer un lien de connexion"
+      assert html =~ "— ou —"
+    end
+
+    test "send_magic_link shows confirmation flash", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/login")
+
+      view
+      |> element("#magic-link-form")
+      |> render_submit(%{"magic_link" => %{"email" => "any@test.com"}})
+
+      assert render(view) =~ "un lien de connexion a été envoyé"
+    end
+
     test "redirects authenticated admin to /admin", %{conn: conn} do
       %{conn: conn} = register_and_log_in_admin(conn)
       assert {:error, {:redirect, %{to: "/admin"}}} = live(conn, ~p"/login")

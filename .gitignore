@@ -34,6 +34,9 @@ crm_reactor-*.tar
 # Environment secrets
 .env
 .env-docker
+
+# Dev-only Docker overrides
+docker-compose.override.yml
 priv/uploads
 
 reactor-crm_ex.zip

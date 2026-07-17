@@ -1,8 +1,8 @@
 defmodule CrmReactor.Tenants.TenantCache do
   @moduledoc """
-  ETS-backed cache for user_identifier → tenant lookups.
+  ETS-backed cache for user identifier → tenant lookups.
 
-  Eliminates the `user_mappings JOIN tenants` query on every request.
+  Stores both email and telegram_id keys pointing to the same tenant map.
   Reads bypass the GenServer via direct ETS lookup.
   Call `reload/0` after provisioning or toggling tenants.
   """
@@ -16,6 +16,7 @@ defmodule CrmReactor.Tenants.TenantCache do
   require Logger
 
   @table :tenant_cache
+  @canonical_table :tenant_canonical_ids
 
   # ── Public API ────────────────────────────────────────────────────────────
 
@@ -24,13 +25,25 @@ defmodule CrmReactor.Tenants.TenantCache do
   end
 
   @doc """
-  Looks up the tenant for a user identifier. Returns `{:ok, tenant_map}` or
-  `{:error, :unknown_user}`. Reads directly from ETS — no GenServer roundtrip.
+  Looks up the tenant for a user identifier (email or telegram_id).
+  Returns `{:ok, tenant_map}` or `{:error, :unknown_user}`.
+  Reads directly from ETS — no GenServer roundtrip.
   """
   def lookup(user_id) do
     case :ets.lookup(@table, user_id) do
       [{^user_id, tenant}] -> {:ok, tenant}
       [] -> {:error, :unknown_user}
+    end
+  end
+
+  @doc """
+  Resolves any identifier (email or telegram_id) to the canonical email.
+  Returns the email if found, or the original identifier if not.
+  """
+  def resolve_canonical_id(identifier) do
+    case :ets.lookup(@canonical_table, identifier) do
+      [{^identifier, email}] -> email
+      [] -> identifier
     end
   end
 
@@ -44,14 +57,25 @@ defmodule CrmReactor.Tenants.TenantCache do
   @impl true
   def init(_opts) do
     table = :ets.new(@table, [:named_table, :set, :protected, {:read_concurrency, true}])
-    load(table)
-    {:ok, %{table: table}}
+
+    canonical =
+      :ets.new(@canonical_table, [:named_table, :set, :protected, {:read_concurrency, true}])
+
+    try do
+      load(table, canonical)
+    rescue
+      e -> Logger.warning("#{__MODULE__} initial load failed (pending migration?): #{inspect(e)}")
+    catch
+      :exit, _ -> Logger.warning("#{__MODULE__} initial load failed: DB unavailable")
+    end
+
+    {:ok, %{table: table, canonical: canonical}}
   end
 
   @impl true
   def handle_call(:reload, _from, state) do
     try do
-      load(state.table)
+      load(state.table, state.canonical)
     rescue
       e -> Logger.debug("#{__MODULE__} reload skipped: #{inspect(e)}")
     catch
@@ -63,14 +87,14 @@ defmodule CrmReactor.Tenants.TenantCache do
 
   # ── Private ───────────────────────────────────────────────────────────────
 
-  defp load(table) do
-    entries =
+  defp load(table, canonical) do
+    rows =
       from(m in UserMapping,
         join: t in Tenant,
         on: t.tenant_id == m.tenant_id,
         where: t.is_active == true,
         select:
-          {m.user_identifier,
+          {m.email, m.telegram_id,
            %{
              tenant_id: t.tenant_id,
              schema_name: t.schema_name,
@@ -82,7 +106,24 @@ defmodule CrmReactor.Tenants.TenantCache do
       )
       |> Repo.all()
 
+    entries =
+      Enum.flat_map(rows, fn {email, telegram_id, tenant_map} ->
+        if telegram_id,
+          do: [{email, tenant_map}, {telegram_id, tenant_map}],
+          else: [{email, tenant_map}]
+      end)
+
+    # Canonical ID table: maps any identifier → email
+    canonical_entries =
+      Enum.flat_map(rows, fn {email, telegram_id, _tenant_map} ->
+        if telegram_id,
+          do: [{email, email}, {telegram_id, email}],
+          else: [{email, email}]
+      end)
+
     :ets.delete_all_objects(table)
     :ets.insert(table, entries)
+    :ets.delete_all_objects(canonical)
+    :ets.insert(canonical, canonical_entries)
   end
 end

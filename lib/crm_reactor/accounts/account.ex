@@ -8,6 +8,7 @@ defmodule CrmReactor.Accounts.Account do
     field :email, :string
     field :name, :string
     field :password, :string, virtual: true, redact: true
+    field :password_confirmation, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
     field :role, :string, default: "user"
     field :tenant_id, :string
@@ -33,8 +34,10 @@ defmodule CrmReactor.Accounts.Account do
 
   def password_changeset(account, attrs) do
     account
-    |> cast(attrs, [:password])
+    |> cast(attrs, [:password, :password_confirmation])
+    |> validate_required([:password_confirmation])
     |> validate_password()
+    |> validate_confirmation(:password, message: "les mots de passe ne correspondent pas")
     |> put_confirm()
   end
 

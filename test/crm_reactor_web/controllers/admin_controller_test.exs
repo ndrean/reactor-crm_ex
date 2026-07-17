@@ -1,10 +1,15 @@
 defmodule CrmReactorWeb.AdminControllerTest do
   use CrmReactorWeb.ConnCase
   alias CrmReactor.AI.SubscriptionCache
+  alias CrmReactor.GDPR.AuditLog
+  alias CrmReactor.Tenants.Provisioner
+
+  import Ecto.Query
 
   setup %{conn: conn} do
     token = Application.get_env(:crm_reactor, :admin_token)
     conn = put_req_header(conn, "authorization", "bearer #{token}")
+    on_exit(fn -> CrmReactor.Repo.delete_all(AuditLog) end)
     {:ok, conn: conn, admin_token: token}
   end
 
@@ -73,7 +78,9 @@ defmodule CrmReactorWeb.AdminControllerTest do
     |> json_response(404)
   end
 
-  test "GET /api/admin/subjects/:id/export - returns subject data", %{conn: conn} do
+  test "GET /api/admin/subjects/:id/export - returns subject data and creates audit log", %{
+    conn: conn
+  } do
     fixture = CrmReactor.TestFixtures.provision_test_tenant()
     on_exit(fn -> CrmReactor.TestFixtures.cleanup_tenant(fixture) end)
 
@@ -83,6 +90,12 @@ defmodule CrmReactorWeb.AdminControllerTest do
       |> json_response(200)
 
     assert resp["user_identifier"] == fixture.user_id
+
+    assert CrmReactor.Repo.exists?(
+             from(a in AuditLog,
+               where: a.action == "export" and a.subject_id == ^fixture.user_id
+             )
+           )
   end
 
   test "GET /api/admin/subjects/:id/export - not found returns 404", %{conn: conn} do
@@ -91,16 +104,16 @@ defmodule CrmReactorWeb.AdminControllerTest do
     |> json_response(404)
   end
 
-  test "POST /api/admin/subjects/:id/email-export - no email returns 422", %{conn: conn} do
+  test "POST /api/admin/subjects/:id/email-export - sends export email", %{conn: conn} do
     fixture = CrmReactor.TestFixtures.provision_test_tenant()
     on_exit(fn -> CrmReactor.TestFixtures.cleanup_tenant(fixture) end)
 
     resp =
       conn
       |> post("/api/admin/subjects/#{fixture.user_id}/email-export")
-      |> json_response(422)
+      |> json_response(200)
 
-    assert resp["error"] =~ "email"
+    assert resp["success"] == true
   end
 
   test "POST /api/admin/subjects/:id/email-export - not found returns 404", %{conn: conn} do
@@ -109,7 +122,9 @@ defmodule CrmReactorWeb.AdminControllerTest do
     |> json_response(404)
   end
 
-  test "DELETE /api/admin/subjects/:id - erases subject data", %{conn: conn} do
+  test "DELETE /api/admin/subjects/:id - erases subject data and creates audit log", %{
+    conn: conn
+  } do
     fixture = CrmReactor.TestFixtures.provision_test_tenant()
     on_exit(fn -> CrmReactor.TestFixtures.cleanup_tenant(fixture) end)
 
@@ -120,6 +135,12 @@ defmodule CrmReactorWeb.AdminControllerTest do
 
     assert resp["success"] == true
     assert resp["erased"] == fixture.user_id
+
+    assert CrmReactor.Repo.exists?(
+             from(a in AuditLog,
+               where: a.action == "erase" and a.subject_id == ^fixture.user_id
+             )
+           )
   end
 
   test "DELETE /api/admin/subjects/:id - not found returns 404", %{conn: conn} do
@@ -128,7 +149,8 @@ defmodule CrmReactorWeb.AdminControllerTest do
     |> json_response(404)
   end
 
-  test "DELETE /api/admin/contacts/:schema/:contact_id - erases contact", %{conn: conn} do
+  test "DELETE /api/admin/contacts/:schema/:contact_id - erases contact and creates audit log",
+       %{conn: conn} do
     fixture = CrmReactor.TestFixtures.provision_test_tenant()
     on_exit(fn -> CrmReactor.TestFixtures.cleanup_tenant(fixture) end)
 
@@ -141,6 +163,14 @@ defmodule CrmReactorWeb.AdminControllerTest do
       |> json_response(200)
 
     assert resp["success"] == true
+
+    contact_id_str = to_string(contact.id)
+
+    assert CrmReactor.Repo.exists?(
+             from(a in AuditLog,
+               where: a.action == "erase_contact" and a.subject_id == ^contact_id_str
+             )
+           )
   end
 
   test "DELETE /api/admin/contacts/:schema/:contact_id - not found returns 404", %{conn: conn} do
@@ -274,14 +304,12 @@ defmodule CrmReactorWeb.AdminControllerTest do
     conn: conn
   } do
     tid = "email_exp_#{System.unique_integer([:positive])}"
-    user_id = "email_user_#{System.unique_integer([:positive])}"
+    user_id = "gdpr_test@example.com"
 
     {:ok, tenant} =
-      CrmReactor.Tenants.Provisioner.provision(tid, "Email Corp", user_id,
-        user_email: "gdpr_test@example.com"
-      )
+      Provisioner.provision(tid, "Email Corp", nil, email: user_id)
 
-    on_exit(fn -> CrmReactor.Tenants.Provisioner.drop_tenant(tenant) end)
+    on_exit(fn -> Provisioner.drop_tenant(tenant) end)
 
     resp =
       conn

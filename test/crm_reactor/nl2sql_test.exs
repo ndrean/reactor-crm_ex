@@ -27,7 +27,8 @@ defmodule CrmReactor.NL2SQLTest do
       |> post("/api/admin/provision", %{
         tenant_id: tid,
         company_name: "NL2SQL Test Corp",
-        telegram_chat_id: user_id
+        telegram_chat_id: user_id,
+        email: "nl2sql_test@example.com"
       })
       |> json_response(200)
 
@@ -97,7 +98,7 @@ defmodule CrmReactor.NL2SQLTest do
       CrmReactor.Repo.query!("DELETE FROM global_registry.tenants WHERE tenant_id = '#{tid}'")
 
       CrmReactor.Repo.query!(
-        "DELETE FROM global_registry.user_mappings WHERE user_identifier = '#{user_id}'"
+        "DELETE FROM global_registry.user_mappings WHERE email = 'nl2sql_test@example.com'"
       )
     end)
 

@@ -71,7 +71,7 @@ defmodule CrmReactorWeb.AdminLive.TelegramSetup do
       )
       when user_email != "" do
     admin_email = socket.assigns.current_account.email
-    opts = [admin_email: admin_email, user_email: user_email]
+    opts = [admin_email: admin_email, email: user_email, telegram_id: chat_id]
 
     case Provisioner.provision(tid, name, chat_id, opts) do
       {:ok, tenant} ->

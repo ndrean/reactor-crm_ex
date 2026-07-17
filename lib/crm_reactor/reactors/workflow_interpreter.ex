@@ -260,20 +260,21 @@ defmodule CrmReactor.Reactors.WorkflowInterpreter do
           v
 
         :error ->
-          atom_key =
-            try do
-              String.to_existing_atom(key)
-            rescue
-              ArgumentError -> nil
-            end
-
-          if atom_key, do: Map.get(map, atom_key), else: nil
+          # Step data uses mixed string/atom keys; try atom form for Ecto structs.
+          find_atom_key(map, key)
       end
 
     if rest == [], do: val, else: get_nested(val, rest)
   end
 
   defp get_nested(_, _), do: nil
+
+  defp find_atom_key(map, key) do
+    Enum.find_value(map, fn
+      {k, v} when is_atom(k) -> if Atom.to_string(k) == key, do: v
+      _ -> nil
+    end)
+  end
 
   # ---------------------------------------------------------------------------
   # Output collection

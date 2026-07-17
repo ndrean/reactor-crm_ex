@@ -3,8 +3,8 @@ defmodule CrmReactorWeb.AdminLive.TenantsTest do
 
   import Phoenix.LiveViewTest
 
-  alias CrmReactor.Tenants.{Provisioner, Tenant}
   alias CrmReactor.Repo
+  alias CrmReactor.Tenants.{Provisioner, Tenant}
 
   setup %{conn: conn} do
     %{conn: conn} = register_and_log_in_admin(conn)
@@ -83,9 +83,7 @@ defmodule CrmReactorWeb.AdminLive.TenantsTest do
 
       {:ok, view, _html} = live(conn, ~p"/admin/tenants")
 
-      view
-      |> element("form[phx-submit=set_webhook]")
-      |> render_submit(%{
+      render_submit(view, "set_webhook", %{
         "tenant_id" => tid,
         "webhook_url" => "https://example.com/hook"
       })

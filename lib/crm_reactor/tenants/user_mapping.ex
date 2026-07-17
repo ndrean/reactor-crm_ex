@@ -5,15 +5,17 @@ defmodule CrmReactor.Tenants.UserMapping do
   @schema_prefix "global_registry"
 
   schema "user_mappings" do
-    field :user_identifier, :string
+    field :email, :string
     field :tenant_id, :string
-    field :user_email, :string
+    field :telegram_id, :string
   end
 
   def changeset(mapping, attrs) do
     mapping
-    |> cast(attrs, [:user_identifier, :tenant_id, :user_email])
-    |> validate_required([:user_identifier, :tenant_id])
-    |> unique_constraint(:user_identifier)
+    |> cast(attrs, [:email, :tenant_id, :telegram_id])
+    |> validate_required([:email, :tenant_id])
+    |> validate_format(:email, ~r/@/)
+    |> unique_constraint(:email)
+    |> unique_constraint(:telegram_id)
   end
 end

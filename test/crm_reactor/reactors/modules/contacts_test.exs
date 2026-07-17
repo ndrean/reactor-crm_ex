@@ -10,7 +10,7 @@ defmodule CrmReactor.Reactors.Modules.ContactsTest do
 
   setup do
     tid = "contacts_mod_#{System.unique_integer([:positive])}"
-    user_id = "contacts_u_#{System.unique_integer([:positive])}"
+    user_id = "contacts_u_#{System.unique_integer([:positive])}@test.com"
     {:ok, tenant} = Provisioner.provision(tid, "Test Corp", user_id)
     schema = tenant.schema_name
 
