@@ -9,31 +9,42 @@ defmodule CrmReactorWeb.AdminLive.Subscriptions do
 
   @impl true
   def mount(_params, _session, socket) do
-    tenants = Repo.all(Tenant)
+    socket =
+      assign(socket,
+        page_title: "Subscriptions",
+        tenants: [],
+        workflows: [],
+        matrix: %{}
+      )
 
-    workflows =
-      RegistryCache.all()
-      |> Enum.map(& &1.workflow_name)
-      |> Enum.uniq()
-      |> Enum.sort()
+    if connected?(socket) do
+      tenants = Repo.all(Tenant)
 
-    matrix =
-      for t <- tenants, into: %{} do
-        row =
-          for wf <- workflows, into: %{} do
-            {wf, SubscriptionCache.enabled?(t.tenant_id, wf)}
-          end
+      workflows =
+        RegistryCache.all()
+        |> Enum.map(& &1.workflow_name)
+        |> Enum.uniq()
+        |> Enum.sort()
 
-        {t.tenant_id, row}
-      end
+      matrix =
+        for t <- tenants, into: %{} do
+          row =
+            for wf <- workflows, into: %{} do
+              {wf, SubscriptionCache.enabled?(t.tenant_id, wf)}
+            end
 
-    {:ok,
-     assign(socket,
-       page_title: "Subscriptions",
-       tenants: tenants,
-       workflows: workflows,
-       matrix: matrix
-     )}
+          {t.tenant_id, row}
+        end
+
+      {:ok,
+       assign(socket,
+         tenants: tenants,
+         workflows: workflows,
+         matrix: matrix
+       )}
+    else
+      {:ok, socket}
+    end
   end
 
   @impl true

@@ -31,6 +31,7 @@ config :logger, :default_formatter,
   metadata: [:request_id]
 
 config :phoenix, :json_library, Jason
+config :phoenix, :filter_parameters, ["password", "secret", "token", "hashed_password", "api_key"]
 
 config :crm_reactor, CrmReactor.Mailer, adapter: Swoosh.Adapters.Local
 config :swoosh, :api_client, false

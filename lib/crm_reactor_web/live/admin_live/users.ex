@@ -5,28 +5,38 @@ defmodule CrmReactorWeb.AdminLive.Users do
   import Ecto.Query
 
   alias CrmReactor.{Accounts, Repo}
-  alias CrmReactor.Tenants.{Tenant, TenantCache, UserMapping}
+  alias CrmReactor.Tenants.{Tenant, UserMapping}
 
   @impl true
   def mount(_params, _session, socket) do
-    account_emails =
-      Repo.all(from(a in Accounts.Account, where: a.role == "user", select: a.email))
+    socket =
+      socket
+      |> assign(page_title: "Users", tenants: [])
+      |> stream(:users, [])
+      |> stream(:accounts, [])
 
-    users =
-      from(u in UserMapping,
-        where: u.email not in ^account_emails,
-        order_by: [asc: u.tenant_id, asc: u.email]
-      )
-      |> Repo.all()
+    if connected?(socket) do
+      account_emails =
+        Repo.all(from(a in Accounts.Account, where: a.role == "user", select: a.email))
 
-    tenants = Repo.all(from(t in Tenant, select: t.tenant_id, order_by: t.tenant_id))
-    accounts = Accounts.list_user_accounts()
+      users =
+        from(u in UserMapping,
+          where: u.email not in ^account_emails,
+          order_by: [asc: u.tenant_id, asc: u.email]
+        )
+        |> Repo.all()
 
-    {:ok,
-     socket
-     |> assign(page_title: "Users", tenants: tenants)
-     |> stream(:users, users)
-     |> stream(:accounts, accounts)}
+      tenants = Repo.all(from(t in Tenant, select: t.tenant_id, order_by: t.tenant_id))
+      accounts = Accounts.list_user_accounts()
+
+      {:ok,
+       socket
+       |> assign(tenants: tenants)
+       |> stream(:users, users, reset: true)
+       |> stream(:accounts, accounts, reset: true)}
+    else
+      {:ok, socket}
+    end
   end
 
   @impl true
@@ -239,9 +249,7 @@ defmodule CrmReactorWeb.AdminLive.Users do
   end
 
   def handle_event("remove_mapping", %{"id" => id}, socket) do
-    mapping = Repo.get!(UserMapping, id)
-    Repo.delete!(mapping)
-    TenantCache.reload()
+    mapping = Accounts.delete_user_mapping!(id)
 
     {:noreply,
      socket
@@ -253,44 +261,41 @@ defmodule CrmReactorWeb.AdminLive.Users do
     tg = if telegram_id != "", do: telegram_id
 
     case Repo.get_by(UserMapping, email: email) do
-      %{tenant_id: ^tid} = existing ->
-        link_telegram(socket, existing, email, tg)
+      %{tenant_id: ^tid} ->
+        do_link_telegram(socket, email, tid, tg)
 
       %{tenant_id: other} ->
         {:noreply,
          put_flash(socket, :error, "#{email} is already associated with tenant '#{other}'.")}
 
       nil ->
-        create_mapping(socket, tid, email, tg)
+        do_create_mapping(socket, tid, email, tg)
     end
   end
 
-  defp link_telegram(socket, existing, email, tg) do
-    if tg && is_nil(existing.telegram_id) do
-      case existing |> UserMapping.changeset(%{telegram_id: tg}) |> Repo.update() do
-        {:ok, user} ->
-          TenantCache.reload()
-
-          {:noreply,
-           socket
-           |> stream_insert(:users, user)
-           |> put_flash(:info, "Telegram #{tg} linked to #{email}")}
-
-        {:error, changeset} ->
-          {:noreply, put_flash(socket, :error, changeset_error_msg(changeset))}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "#{email} already has a Telegram ID linked.")}
-    end
+  defp do_link_telegram(socket, email, _tid, nil) do
+    {:noreply, put_flash(socket, :error, "#{email} already has a Telegram ID linked.")}
   end
 
-  defp create_mapping(socket, tid, email, tg) do
-    case %UserMapping{}
-         |> UserMapping.changeset(%{tenant_id: tid, email: email, telegram_id: tg})
-         |> Repo.insert() do
+  defp do_link_telegram(socket, email, tid, tg) do
+    case Accounts.link_telegram(email, tid, tg) do
       {:ok, user} ->
-        TenantCache.reload()
+        {:noreply,
+         socket
+         |> stream_insert(:users, user)
+         |> put_flash(:info, "Telegram #{tg} linked to #{email}")}
 
+      {:error, :already_linked} ->
+        {:noreply, put_flash(socket, :error, "#{email} already has a Telegram ID linked.")}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, changeset_error_msg(changeset))}
+    end
+  end
+
+  defp do_create_mapping(socket, tid, email, tg) do
+    case Accounts.create_user_mapping(%{tenant_id: tid, email: email, telegram_id: tg}) do
+      {:ok, user} ->
         {:noreply,
          socket
          |> stream_insert(:users, user)

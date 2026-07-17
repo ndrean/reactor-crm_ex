@@ -134,9 +134,13 @@ defmodule CrmReactorWeb.Router do
     post "/telegram", WebhookController, :telegram
   end
 
-  get "/metrics", CrmReactorWeb.MetricsController, :index
+  scope "/", CrmReactorWeb do
+    pipe_through [:api, :admin_api_rate_limited]
 
-  # if Mix.env() == :dev do
-  forward "/mailbox", Plug.Swoosh.MailboxPreview
-  # end
+    get "/metrics", MetricsController, :index
+  end
+
+  if Mix.env() == :dev do
+    forward "/mailbox", Plug.Swoosh.MailboxPreview
+  end
 end

@@ -8,12 +8,16 @@ defmodule CrmReactorWeb.AdminLive.Tenants do
 
   @impl true
   def mount(_params, _session, socket) do
-    tenants = Repo.all(Tenant)
+    socket =
+      socket
+      |> assign(page_title: "Tenants")
+      |> stream(:tenants, [])
 
-    {:ok,
-     socket
-     |> assign(page_title: "Tenants")
-     |> stream(:tenants, tenants)}
+    if connected?(socket) do
+      {:ok, stream(socket, :tenants, Repo.all(Tenant), reset: true)}
+    else
+      {:ok, socket}
+    end
   end
 
   @impl true

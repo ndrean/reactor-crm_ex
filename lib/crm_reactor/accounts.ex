@@ -248,6 +248,9 @@ defmodule CrmReactor.Accounts do
       nil ->
         {:error, :not_found}
 
+      %{telegram_id: existing_tg} when not is_nil(existing_tg) ->
+        {:error, :already_linked}
+
       mapping ->
         mapping
         |> UserMapping.changeset(%{telegram_id: telegram_id})
@@ -257,6 +260,23 @@ defmodule CrmReactor.Accounts do
           _ -> :ok
         end)
     end
+  end
+
+  def create_user_mapping(attrs) do
+    %UserMapping{}
+    |> UserMapping.changeset(attrs)
+    |> Repo.insert()
+    |> tap(fn
+      {:ok, _} -> TenantCache.reload()
+      _ -> :ok
+    end)
+  end
+
+  def delete_user_mapping!(id) do
+    mapping = Repo.get!(UserMapping, id)
+    Repo.delete!(mapping)
+    TenantCache.reload()
+    mapping
   end
 
   defp insert_user_with_mapping(attrs) do
@@ -276,15 +296,18 @@ defmodule CrmReactor.Accounts do
     end)
   end
 
-  defp ensure_user_mapping(account) do
+  defp ensure_user_mapping(%{tenant_id: tid} = account) do
     case Repo.get_by(UserMapping, email: account.email) do
-      %{tenant_id: tenant_id} when tenant_id == account.tenant_id ->
+      %{tenant_id: ^tid} ->
         :ok
 
       nil ->
         %UserMapping{}
         |> UserMapping.changeset(%{email: account.email, tenant_id: account.tenant_id})
         |> Repo.insert!()
+
+      %{tenant_id: other} ->
+        Repo.rollback({:tenant_conflict, other})
     end
   end
 end

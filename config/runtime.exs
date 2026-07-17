@@ -12,7 +12,11 @@ config :crm_reactor,
     if(System.get_env("WHISPER_PROVIDER") == "mistral", do: :mistral, else: :local),
   telegram_bot_token: System.get_env("TELEGRAM_BOT_TOKEN"),
   telegram_secret_token: System.get_env("TELEGRAM_SECRET_TOKEN"),
-  admin_token: System.get_env("ADMIN_TOKEN", "dev-admin-token"),
+  admin_token:
+    if(config_env() == :prod,
+      do: System.get_env("ADMIN_TOKEN") || raise("ADMIN_TOKEN env var is required in prod"),
+      else: System.get_env("ADMIN_TOKEN", "dev-admin-token")
+    ),
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads")
 
 config :telegex, token: System.get_env("TELEGRAM_BOT_TOKEN")

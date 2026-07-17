@@ -9,23 +9,35 @@ defmodule CrmReactorWeb.AdminLive.Dashboard do
 
   @impl true
   def mount(_params, _session, socket) do
-    tenant_count = Repo.aggregate(Tenant, :count, :id)
-    user_count = Repo.aggregate(UserMapping, :count, :id)
+    socket =
+      socket
+      |> assign(
+        page_title: "Dashboard",
+        tenant_count: 0,
+        active_tenants: 0,
+        user_count: 0,
+        log_count: 0
+      )
+      |> stream(:recent_logs, [])
 
-    active_tenants = Repo.aggregate(from(t in Tenant, where: t.is_active == true), :count, :id)
+    if connected?(socket) do
+      tenant_count = Repo.aggregate(Tenant, :count, :id)
+      user_count = Repo.aggregate(UserMapping, :count, :id)
+      active_tenants = Repo.aggregate(from(t in Tenant, where: t.is_active == true), :count, :id)
+      recent_logs = load_recent_logs(10)
 
-    recent_logs = load_recent_logs(10)
-
-    {:ok,
-     socket
-     |> assign(
-       page_title: "Dashboard",
-       tenant_count: tenant_count,
-       active_tenants: active_tenants,
-       user_count: user_count,
-       log_count: length(recent_logs)
-     )
-     |> stream(:recent_logs, recent_logs)}
+      {:ok,
+       socket
+       |> assign(
+         tenant_count: tenant_count,
+         active_tenants: active_tenants,
+         user_count: user_count,
+         log_count: length(recent_logs)
+       )
+       |> stream(:recent_logs, recent_logs)}
+    else
+      {:ok, socket}
+    end
   end
 
   @impl true

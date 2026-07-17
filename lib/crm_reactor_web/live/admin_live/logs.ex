@@ -9,17 +9,21 @@ defmodule CrmReactorWeb.AdminLive.Logs do
 
   @impl true
   def mount(_params, _session, socket) do
-    tenants = Repo.all(from(t in Tenant, select: t.tenant_id, order_by: t.tenant_id))
+    socket =
+      socket
+      |> assign(page_title: "Logs", tenants: [], filter_tenant: nil, filter_status: nil)
+      |> stream(:logs, [])
 
-    {:ok,
-     socket
-     |> assign(
-       page_title: "Logs",
-       tenants: tenants,
-       filter_tenant: nil,
-       filter_status: nil
-     )
-     |> stream(:logs, load_logs(nil, nil))}
+    if connected?(socket) do
+      tenants = Repo.all(from(t in Tenant, select: t.tenant_id, order_by: t.tenant_id))
+
+      {:ok,
+       socket
+       |> assign(tenants: tenants)
+       |> stream(:logs, load_logs(nil, nil), reset: true)}
+    else
+      {:ok, socket}
+    end
   end
 
   @impl true

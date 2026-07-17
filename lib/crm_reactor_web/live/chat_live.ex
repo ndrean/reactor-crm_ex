@@ -14,23 +14,28 @@ defmodule CrmReactorWeb.ChatLive do
   @impl true
   def mount(_params, _session, socket) do
     account = socket.assigns.current_account
-    tenant = resolve_tenant(account.tenant_id)
 
-    {:ok,
-     socket
-     |> assign(:user_id, account.email)
-     |> assign(:tenant, tenant)
-     |> assign(:input, "")
-     |> assign(:pending, nil)
-     |> assign(:email_input, "")
-     |> assign(:loading, false)
-     |> assign(:error, nil)
-     |> stream(:messages, [])
-     |> allow_upload(:attachment,
-       accept: ~w(.jpg .jpeg .png .gif .csv .txt .vcf),
-       max_entries: 1,
-       max_file_size: Storage.max_size_bytes()
-     )}
+    socket =
+      socket
+      |> assign(:user_id, account.email)
+      |> assign(:tenant, nil)
+      |> assign(:input, "")
+      |> assign(:pending, nil)
+      |> assign(:email_input, "")
+      |> assign(:loading, false)
+      |> assign(:error, nil)
+      |> stream(:messages, [], limit: 100)
+      |> allow_upload(:attachment,
+        accept: ~w(.jpg .jpeg .png .gif .csv .txt .vcf),
+        max_entries: 1,
+        max_file_size: Storage.max_size_bytes()
+      )
+
+    if connected?(socket) do
+      {:ok, assign(socket, :tenant, resolve_tenant(account.tenant_id))}
+    else
+      {:ok, socket}
+    end
   end
 
   @impl true
