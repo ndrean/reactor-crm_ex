@@ -10,7 +10,6 @@ config :crm_reactor,
   workflow_modules: %{
     "contacts" => CrmReactor.Reactors.Modules.Contacts,
     "todos" => CrmReactor.Reactors.Modules.Todos,
-    "appointments" => CrmReactor.Reactors.Modules.Appointments,
     "expenses" => CrmReactor.Reactors.Modules.Expenses,
     "data" => CrmReactor.Reactors.Modules.DataExport,
     "help" => CrmReactor.Reactors.Modules.Help

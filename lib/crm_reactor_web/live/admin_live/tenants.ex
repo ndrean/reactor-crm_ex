@@ -45,7 +45,7 @@ defmodule CrmReactorWeb.AdminLive.Tenants do
       <button type="submit" style="padding:8px 20px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:0.875rem;cursor:pointer;">Provision</button>
     </.admin_form>
 
-    <.admin_table rows={@streams.tenants} cols={["Tenant ID", "Company", "Schema", "Active", "Webhook URL", "Actions"]}>
+    <.admin_table id="tenants" rows={@streams.tenants} cols={["Tenant ID", "Company", "Schema", "Active", "Webhook URL", "Actions"]}>
       <:col :let={{_id, tenant}}>
         <td style="padding:10px 16px;font-size:0.875rem;font-weight:500;"><%= tenant.tenant_id %></td>
         <td style="padding:10px 16px;font-size:0.875rem;"><%= tenant.company_name %></td>

@@ -62,7 +62,7 @@ defmodule CrmReactorWeb.AdminLive.Dashboard do
     </div>
 
     <h2 style="font-size:1.1rem;margin-bottom:12px;">Recent Activity</h2>
-    <.admin_table rows={@streams.recent_logs} cols={["Time", "Tenant", "User", "Module", "Action", "Status"]}>
+    <.admin_table id="recent-logs" rows={@streams.recent_logs} cols={["Time", "Tenant", "User", "Module", "Action", "Status"]}>
       <:col :let={{_id, log}}>
         <td style="padding:10px 16px;font-size:0.875rem;"><%= format_time(log.logged_at) %></td>
         <td style="padding:10px 16px;font-size:0.875rem;"><%= log.schema %></td>
@@ -90,7 +90,7 @@ defmodule CrmReactorWeb.AdminLive.Dashboard do
           |> Enum.map_join(" UNION ALL ", fn schema ->
             safe = safe_schema(schema)
 
-            "SELECT id, triggered_by, module, action, status, logged_at, '#{safe}' AS schema_name FROM #{safe}.execution_logs"
+            "SELECT id, triggered_by, module, action, status, logged_at, '#{safe}' AS schema_name FROM #{safe}.execution_logs WHERE logged_at > NOW() - INTERVAL '24 hours'"
           end)
 
         sql =

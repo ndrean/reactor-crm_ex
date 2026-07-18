@@ -2,8 +2,8 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
   @moduledoc "Corporate expense claims CRUD with receipt photo extraction."
 
   alias CrmReactor.CRM.{Contact, ExecutionLog, Expense}
+  alias CrmReactor.Reactors.PendingHelper
   alias CrmReactor.Repo
-  alias CrmReactor.Workers.PendingTimeoutWorker
   import Ecto.Query
 
   @categories ~w(restaurant transport hébergement fournitures autre)
@@ -213,10 +213,6 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
     end
   end
 
-  @pending_timeout_seconds 15 * 60
-  defp schedule_pending_timeout(pending_id, schema) do
-    %{"pending_id" => pending_id, "schema_name" => schema}
-    |> PendingTimeoutWorker.new(schedule_in: @pending_timeout_seconds)
-    |> Oban.insert()
-  end
+  defp schedule_pending_timeout(pending_id, schema),
+    do: PendingHelper.schedule_pending_timeout(pending_id, schema)
 end

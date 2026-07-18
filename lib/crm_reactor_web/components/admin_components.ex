@@ -4,6 +4,7 @@ defmodule CrmReactorWeb.AdminComponents do
 
   attr :rows, :list, required: true
   attr :cols, :list, required: true
+  attr :id, :string, default: "admin-table"
   slot :col, required: true
 
   def admin_table(assigns) do
@@ -17,8 +18,8 @@ defmodule CrmReactorWeb.AdminComponents do
             </th>
           </tr>
         </thead>
-        <tbody>
-          <tr :for={row <- @rows} style="border-bottom:1px solid #f0f0f0;">
+        <tbody id={@id} phx-update="stream">
+          <tr :for={{dom_id, _item} = row <- @rows} id={dom_id} style="border-bottom:1px solid #f0f0f0;">
             <%= render_slot(@col, row) %>
           </tr>
         </tbody>

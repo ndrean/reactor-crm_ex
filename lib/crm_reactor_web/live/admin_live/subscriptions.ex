@@ -26,15 +26,7 @@ defmodule CrmReactorWeb.AdminLive.Subscriptions do
         |> Enum.uniq()
         |> Enum.sort()
 
-      matrix =
-        for t <- tenants, into: %{} do
-          row =
-            for wf <- workflows, into: %{} do
-              {wf, SubscriptionCache.enabled?(t.tenant_id, wf)}
-            end
-
-          {t.tenant_id, row}
-        end
+      matrix = build_matrix(tenants, workflows)
 
       {:ok,
        assign(socket,
@@ -81,6 +73,13 @@ defmodule CrmReactorWeb.AdminLive.Subscriptions do
       </tbody>
     </table>
     """
+  end
+
+  defp build_matrix(tenants, workflows) do
+    for t <- tenants, into: %{} do
+      row = for wf <- workflows, into: %{}, do: {wf, SubscriptionCache.enabled?(t.tenant_id, wf)}
+      {t.tenant_id, row}
+    end
   end
 
   @impl true

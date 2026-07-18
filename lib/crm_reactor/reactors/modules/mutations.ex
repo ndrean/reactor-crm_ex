@@ -13,14 +13,9 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
   @doc """
   Confirms or rejects a pending mutation.
 
-  When `user_id` is provided, the search is scoped to the user's tenant schema
-  and the caller must match the `triggered_by` on the log entry.
-
-  When `user_id` is nil (system callers like PendingTimeoutWorker), all tenant
-  schemas are scanned and authorization is bypassed.
+  The search is scoped to the user's tenant schema and the caller must match
+  the `triggered_by` on the log entry.
   """
-  def confirm(pending_id, decision, user_id \\ nil)
-
   def confirm(pending_id, decision, user_id) when is_binary(user_id) do
     with schema when is_binary(schema) <- resolve_schema(user_id),
          log when not is_nil(log) <- find_pending_in_schema(pending_id, schema),
@@ -29,14 +24,6 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
     else
       nil -> {:error, :pending_not_found}
       {:error, :unauthorized} = err -> err
-    end
-  end
-
-  # System callers (PendingTimeoutWorker) scan all schemas — no user context.
-  def confirm(pending_id, decision, nil) do
-    case find_pending_log_all_schemas(pending_id) do
-      nil -> {:error, :pending_not_found}
-      log -> dispatch_confirm(log, log.schema, decision)
     end
   end
 
@@ -99,18 +86,6 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
       nil -> nil
       log -> Map.put(log, :schema, schema)
     end
-  end
-
-  # System-only: scan all schemas (PendingTimeoutWorker auto-reject).
-  defp find_pending_log_all_schemas(pending_id) do
-    schemas = from(t in Tenant, select: t.schema_name) |> Repo.all()
-
-    Enum.find_value(schemas, fn schema ->
-      case pending_log_query(pending_id) |> Repo.one(prefix: schema) do
-        nil -> nil
-        log -> Map.put(log, :schema, schema)
-      end
-    end)
   end
 
   defp pending_log_query(pending_id) do
@@ -230,7 +205,7 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
   end
 
   defp execute_mutation(
-         %{module: "appointments", action: "cancel", proposed_params: params} = log,
+         %{module: "todos", action: "cancel_appointment", proposed_params: params} = log,
          schema
        ) do
     result =
@@ -253,7 +228,7 @@ defmodule CrmReactor.Reactors.Modules.Mutations do
   end
 
   defp execute_mutation(
-         %{module: "appointments", action: "reschedule", proposed_params: params} = log,
+         %{module: "todos", action: "reschedule", proposed_params: params} = log,
          schema
        ) do
     case parse_reschedule_datetime(params) do

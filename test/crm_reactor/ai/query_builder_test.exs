@@ -240,7 +240,7 @@ defmodule CrmReactor.AI.QueryBuilderTest do
     assert inspect(query) =~ "not-a-number"
   end
 
-  # ── HTTP path — Mistral and Ollama (Bypass) ───────────────────────────
+  # ── HTTP path — Mistral (Bandit test server) ─────────────────────────
 
   describe "HTTP path" do
     setup do
@@ -248,9 +248,6 @@ defmodule CrmReactor.AI.QueryBuilderTest do
       prev_url = Application.get_env(:crm_reactor, :mistral_api_url)
       prev_key = Application.get_env(:crm_reactor, :mistral_api_key)
       Application.delete_env(:crm_reactor, :nl2sql_adapter)
-
-      bypass = Bypass.open()
-      Application.put_env(:crm_reactor, :mistral_api_url, "http://localhost:#{bypass.port}")
       Application.put_env(:crm_reactor, :mistral_api_key, "test-key")
 
       on_exit(fn ->
@@ -265,40 +262,50 @@ defmodule CrmReactor.AI.QueryBuilderTest do
         end
       end)
 
-      {:ok, bypass: bypass}
+      :ok
     end
 
-    test "Mistral 200 success returns Ecto query", %{bypass: bypass} do
-      Bypass.expect_once(bypass, "POST", "/v1/chat/completions", fn conn ->
-        body =
-          Jason.encode!(%{
-            "choices" => [
-              %{
-                "message" => %{
-                  "content" => ~s({"filters":[],"sort_by":null,"sort_dir":"asc"})
+    test "Mistral 200 success returns Ecto query" do
+      {:ok, port, pid} =
+        CrmReactor.TestPlugServer.start(fn conn ->
+          body =
+            Jason.encode!(%{
+              "choices" => [
+                %{
+                  "message" => %{
+                    "content" => ~s({"filters":[],"sort_by":null,"sort_dir":"asc"})
+                  }
                 }
-              }
-            ]
-          })
+              ]
+            })
 
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, body)
-      end)
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, body)
+        end)
+
+      Application.put_env(:crm_reactor, :mistral_api_url, "http://localhost:#{port}")
+
+      on_exit(fn -> CrmReactor.TestPlugServer.stop(pid) end)
 
       assert {:ok, %Ecto.Query{}} = QueryBuilder.build_query(Todo, "tous les todos")
     end
 
-    test "Mistral non-200 returns error (no Ollama fallback)", %{bypass: bypass} do
-      Bypass.expect_once(bypass, "POST", "/v1/chat/completions", fn conn ->
-        Plug.Conn.send_resp(conn, 500, "error")
-      end)
+    test "Mistral non-200 returns error (no Ollama fallback)" do
+      {:ok, port, pid} =
+        CrmReactor.TestPlugServer.start(fn conn ->
+          Plug.Conn.send_resp(conn, 500, "error")
+        end)
+
+      Application.put_env(:crm_reactor, :mistral_api_url, "http://localhost:#{port}")
+
+      on_exit(fn -> CrmReactor.TestPlugServer.stop(pid) end)
 
       assert {:error, "Mistral error 500"} = QueryBuilder.build_query(Todo, "erreur Mistral")
     end
 
-    test "Mistral connection refused returns error", %{bypass: bypass} do
-      Bypass.down(bypass)
+    test "Mistral connection refused returns error" do
+      Application.put_env(:crm_reactor, :mistral_api_url, "http://localhost:1")
 
       assert {:error, _} = QueryBuilder.build_query(Todo, "tout échoue")
     end

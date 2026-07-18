@@ -14,6 +14,7 @@ defmodule CrmReactor.CRM.Todo do
     field :location, :string
     field :reminder_minutes, :integer, default: 30
     field :reminder_job_id, :integer
+    field :contact_name, :string, virtual: true
 
     timestamps(type: :utc_datetime, inserted_at: :created_at, updated_at: false)
   end

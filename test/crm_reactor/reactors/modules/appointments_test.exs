@@ -1,9 +1,9 @@
 defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
-  @moduledoc "Tests for the Appointments module."
+  @moduledoc "Tests for appointment actions in the Todos module."
   use CrmReactor.DataCase
 
   alias CrmReactor.CRM.{Contact, ExecutionLog, Todo}
-  alias CrmReactor.Reactors.Modules.Appointments
+  alias CrmReactor.Reactors.Modules.Todos
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.Provisioner
 
@@ -41,7 +41,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
   # ── Create ─────────────────────────────────────────────────────────────
 
-  describe "create" do
+  describe "create_appointment" do
     test "creates an appointment with starts_at and schedules reminder", %{
       schema: schema,
       user_id: user_id
@@ -49,8 +49,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       next_week = Date.add(Date.utc_today(), 7) |> Date.to_iso8601()
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "create",
+        Todos.execute(%{
+          action: "create_appointment",
           params: %{
             "subject" => "Déjeuner client",
             "date" => next_week,
@@ -62,7 +62,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
           channel: :http
         })
 
-      assert result.action == "create"
+      assert result.action == "create_appointment"
       assert result.output =~ "Rendez-vous créé"
       assert result.output =~ "Déjeuner client"
       assert result.data["todo_id"]
@@ -82,8 +82,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       next_week = Date.add(Date.utc_today(), 7) |> Date.to_iso8601()
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "create",
+        Todos.execute(%{
+          action: "create_appointment",
           params: %{
             "subject" => "Conf call",
             "date" => next_week,
@@ -96,7 +96,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
           channel: :http
         })
 
-      assert result.action == "create"
+      assert result.action == "create_appointment"
       todo = Repo.get!(Todo, result.data["todo_id"], prefix: schema)
       # 90 minutes duration
       assert DateTime.diff(todo.ends_at, todo.starts_at) == 90 * 60
@@ -111,8 +111,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       next_week = Date.add(Date.utc_today(), 7) |> Date.to_iso8601()
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "create",
+        Todos.execute(%{
+          action: "create_appointment",
           params: %{
             "subject" => "RDV Marie",
             "date" => next_week,
@@ -124,15 +124,15 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
           channel: :http
         })
 
-      assert result.action == "create"
+      assert result.action == "create_appointment"
       todo = Repo.get!(Todo, result.data["todo_id"], prefix: schema)
       assert todo.contact_id == marie.id
     end
 
     test "create with invalid date returns error", %{schema: schema, user_id: user_id} do
       {:ok, result} =
-        Appointments.execute(%{
-          action: "create",
+        Todos.execute(%{
+          action: "create_appointment",
           params: %{"subject" => "Test", "date" => "not-a-date", "time" => "14:00"},
           tenant_schema: schema,
           user_id: user_id,
@@ -144,8 +144,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
     test "create with missing date/time returns error", %{schema: schema, user_id: user_id} do
       {:ok, result} =
-        Appointments.execute(%{
-          action: "create",
+        Todos.execute(%{
+          action: "create_appointment",
           params: %{"subject" => "Test"},
           tenant_schema: schema,
           user_id: user_id,
@@ -162,8 +162,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       yesterday = Date.add(Date.utc_today(), -1) |> Date.to_iso8601()
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "create",
+        Todos.execute(%{
+          action: "create_appointment",
           params: %{
             "subject" => "Passé",
             "date" => yesterday,
@@ -174,15 +174,14 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
           channel: :http
         })
 
-      assert result.action == "create"
-      # Past appointment — reminder should not be scheduled
+      assert result.action == "create_appointment"
       assert result.data["reminder_job_id"] == nil
     end
   end
 
   # ── List ───────────────────────────────────────────────────────────────
 
-  describe "list" do
+  describe "list_appointments" do
     test "lists upcoming appointments (not regular todos)", %{
       schema: schema,
       user_id: user_id
@@ -194,14 +193,14 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       )
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{},
           tenant_schema: schema,
           user_id: user_id
         })
 
-      assert result.action == "list"
+      assert result.action == "list_appointments"
       assert result.output =~ "Réunion Marie"
       assert result.output =~ "Bureau"
       refute result.output =~ "Tâche simple"
@@ -210,8 +209,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
     test "list filtered by contact_name", %{schema: schema, user_id: user_id} do
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{"contact_name" => "Marie Dupont"},
           tenant_schema: schema,
           user_id: user_id
@@ -223,8 +222,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
     test "empty list returns appropriate message", %{schema: schema} do
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{},
           tenant_schema: schema,
           user_id: "ghost_user"
@@ -234,10 +233,9 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
     end
 
     test "list with period=today filters to today only", %{schema: schema, user_id: user_id} do
-      # The seeded appointment is tomorrow, so "today" filter should return 0
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{"period" => "today"},
           tenant_schema: schema,
           user_id: user_id
@@ -248,14 +246,13 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
     test "list with period=week includes this week", %{schema: schema, user_id: user_id} do
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{"period" => "week"},
           tenant_schema: schema,
           user_id: user_id
         })
 
-      # The seeded appointment is tomorrow — within the week
       assert result.data["count"] >= 1
     end
 
@@ -267,8 +264,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       date = DateTime.to_date(starts_at) |> Date.to_iso8601()
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{"date" => date},
           tenant_schema: schema,
           user_id: user_id
@@ -282,8 +279,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       date = DateTime.to_date(starts_at) |> Date.to_iso8601()
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{"due_on" => date},
           tenant_schema: schema,
           user_id: user_id
@@ -297,8 +294,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       wrong_date = Date.add(Date.utc_today(), 10) |> Date.to_iso8601()
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{"due_on" => wrong_date},
           tenant_schema: schema,
           user_id: user_id
@@ -311,8 +308,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       today = Date.utc_today() |> Date.to_iso8601()
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{"due_after" => today},
           tenant_schema: schema,
           user_id: user_id
@@ -325,14 +322,13 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       next_week = Date.add(Date.utc_today(), 7) |> Date.to_iso8601()
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{"due_before" => next_week},
           tenant_schema: schema,
           user_id: user_id
         })
 
-      # Tomorrow's appointment should be within today..next_week
       assert result.data["count"] >= 1
     end
 
@@ -344,8 +340,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       date = DateTime.to_date(starts_at)
 
       {:ok, result} =
-        Appointments.execute(%{
-          action: "list",
+        Todos.execute(%{
+          action: "list_appointments",
           params: %{
             "due_after" => Date.to_iso8601(date),
             "due_before" => Date.to_iso8601(date)
@@ -360,7 +356,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
   # ── Cancel ─────────────────────────────────────────────────────────────
 
-  describe "cancel" do
+  describe "cancel_appointment" do
     setup %{schema: schema, user_id: user_id} do
       log =
         %ExecutionLog{}
@@ -380,8 +376,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       log_id: log_id
     } do
       {:ok, result} =
-        Appointments.execute(%{
-          action: "cancel",
+        Todos.execute(%{
+          action: "cancel_appointment",
           params: %{"subject" => "Réunion Marie"},
           tenant_schema: schema,
           user_id: user_id,
@@ -400,8 +396,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       log_id: log_id
     } do
       {:ok, result} =
-        Appointments.execute(%{
-          action: "cancel",
+        Todos.execute(%{
+          action: "cancel_appointment",
           params: %{"subject" => "Inexistant XYZ"},
           tenant_schema: schema,
           user_id: user_id,
@@ -434,7 +430,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       log_id: log_id
     } do
       {:ok, result} =
-        Appointments.execute(%{
+        Todos.execute(%{
           action: "reschedule",
           params: %{
             "subject" => "Réunion Marie",
@@ -458,7 +454,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       log_id: log_id
     } do
       {:ok, result} =
-        Appointments.execute(%{
+        Todos.execute(%{
           action: "reschedule",
           params: %{"subject" => "Inexistant"},
           tenant_schema: schema,
@@ -474,18 +470,15 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
   describe "multiple matches" do
     setup %{schema: schema, user_id: user_id} do
-      # Insert a second appointment with overlapping subject
       day_after = Date.add(Date.utc_today(), 2)
       starts_at = DateTime.new!(day_after, ~T[10:00:00], "Etc/UTC")
       ends_at = DateTime.add(starts_at, 3600, :second)
 
-      # Use same base subject pattern so partial ILIKE matches both but neither is an exact match
       Repo.query!(
         "INSERT INTO #{schema}.todos (subject, created_by, starts_at, ends_at) VALUES ($1, $2, $3, $4)",
         ["Réunion Marie Soir", user_id, starts_at, ends_at]
       )
 
-      # Rename the original to also not be an exact match for "Réunion"
       Repo.query!(
         "UPDATE #{schema}.todos SET subject = 'Réunion Marie Matin' WHERE subject = 'Réunion Marie' AND starts_at IS NOT NULL",
         []
@@ -509,8 +502,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       log_id: log_id
     } do
       {:ok, result} =
-        Appointments.execute(%{
-          action: "cancel",
+        Todos.execute(%{
+          action: "cancel_appointment",
           params: %{"subject" => "Réunion"},
           tenant_schema: schema,
           user_id: user_id,
@@ -526,7 +519,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       log_id: log_id
     } do
       {:ok, result} =
-        Appointments.execute(%{
+        Todos.execute(%{
           action: "reschedule",
           params: %{
             "subject" => "Réunion",
@@ -564,8 +557,8 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       log_id: log_id
     } do
       {:ok, result} =
-        Appointments.execute(%{
-          action: "cancel",
+        Todos.execute(%{
+          action: "cancel_appointment",
           params: %{"subject" => "Réunion Marie"},
           tenant_schema: schema,
           user_id: user_id,
@@ -591,7 +584,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
       log_id: log_id
     } do
       {:ok, result} =
-        Appointments.execute(%{
+        Todos.execute(%{
           action: "reschedule",
           params: %{
             "subject" => "Réunion Marie",
@@ -621,7 +614,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
   # ── Unsupported action ────────────────────────────────────────────────
 
   test "unsupported action returns error message" do
-    {:ok, result} = Appointments.execute(%{action: "export"})
+    {:ok, result} = Todos.execute(%{action: "export"})
     assert result.output =~ "non supportée"
   end
 end

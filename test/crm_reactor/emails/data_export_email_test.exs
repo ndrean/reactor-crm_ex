@@ -116,7 +116,9 @@ defmodule CrmReactor.Emails.DataExportEmailTest do
     assert_no_email_sent()
 
     # Step 2: user provides email via confirm
-    {:ok, result} = Mutations.confirm(pending.pending_id, "admin@loopcorp.fr")
+    {:ok, result} =
+      Mutations.confirm_system(pending.pending_id, "admin@loopcorp.fr", tenant.schema_name)
+
     assert result.action == "dump"
     assert result.output =~ "admin@loopcorp.fr"
 
@@ -149,7 +151,9 @@ defmodule CrmReactor.Emails.DataExportEmailTest do
         tenant: build_tenant_map(tenant)
       })
 
-    assert {:error, :invalid_email} = Mutations.confirm(pending.pending_id, "not-an-email")
+    assert {:error, :invalid_email} =
+             Mutations.confirm_system(pending.pending_id, "not-an-email", tenant.schema_name)
+
     assert_no_email_sent()
   end
 
@@ -176,7 +180,8 @@ defmodule CrmReactor.Emails.DataExportEmailTest do
         tenant: build_tenant_map(tenant)
       })
 
-    {:ok, _result} = Mutations.confirm(pending.pending_id, "temp@example.fr")
+    {:ok, _result} =
+      Mutations.confirm_system(pending.pending_id, "temp@example.fr", tenant.schema_name)
 
     # Verify the email was NOT saved to the tenant record
     reloaded = Repo.get_by!(CrmReactor.Tenants.Tenant, tenant_id: tenant.tenant_id)

@@ -115,15 +115,15 @@ defmodule CrmReactor.AI.MockClassifier do
       {~r/liste.*tâche|affiche.*tâche|mes tâches/, "todos", "list", fn _ -> %{} end},
       {~r/termine|complète/, "todos", "complete",
        fn text -> %{"subject" => extract_after(text, ~r/termine|complète/)} end},
-      {~r/rendez-vous|réunion|rdv|créneau|planifi/i, "appointments", "create",
+      {~r/rendez-vous|réunion|rdv|créneau|planifi/i, "todos", "create_appointment",
        fn _ ->
          tomorrow = Date.add(Date.utc_today(), 1) |> Date.to_iso8601()
          %{"subject" => "Réunion test", "date" => tomorrow, "time" => "14:00"}
        end},
-      {~r/mes rendez-vous|prochains? rdv|agenda/i, "appointments", "list", fn _ -> %{} end},
-      {~r/annule.*rdv|annule.*rendez-vous|annule.*réunion/i, "appointments", "cancel",
+      {~r/mes rendez-vous|prochains? rdv|agenda/i, "todos", "list_appointments", fn _ -> %{} end},
+      {~r/annule.*rdv|annule.*rendez-vous|annule.*réunion/i, "todos", "cancel_appointment",
        fn text -> %{"subject" => extract_after(text, ~r/annule/)} end},
-      {~r/déplace|reporte|reprogramme/i, "appointments", "reschedule",
+      {~r/déplace|reporte|reprogramme/i, "todos", "reschedule",
        fn text -> %{"subject" => extract_after(text, ~r/déplace|reporte|reprogramme/)} end},
       {~r/note de frais|dépense|reçu|ticket|expense|frais/i, "expenses", "submit",
        fn _ ->

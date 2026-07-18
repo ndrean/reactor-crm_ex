@@ -44,17 +44,18 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
 
   # ── Unknown pending_id ────────────────────────────────────────────────
 
-  test "unknown pending_id returns {:error, :pending_not_found}" do
-    assert {:error, :pending_not_found} = Mutations.confirm(Ecto.UUID.generate(), "confirm")
+  test "unknown pending_id returns {:error, :pending_not_found}", %{schema: schema} do
+    assert {:error, :pending_not_found} =
+             Mutations.confirm_system(Ecto.UUID.generate(), "confirm", schema)
   end
 
   # ── Reject ────────────────────────────────────────────────────────────
 
-  test "reject cancels the pending action", %{log: log, schema: schema} do
+  test "reject cancels the pending action", %{log: log, schema: schema, user_id: user_id} do
     contact = first_contact(schema)
     pending = put_pending(log, schema, "contacts", "delete", %{"contact_id" => contact.id})
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "reject")
+    {:ok, result} = Mutations.confirm(pending.pending_id, "reject", user_id)
 
     assert result.output =~ "annulée"
     assert result.action == "rejected"
@@ -73,7 +74,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
         "first_name" => "Marie-Claire"
       })
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
 
     assert result.output =~ "modifié"
 
@@ -87,7 +88,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
     contact = first_contact(schema)
     pending = put_pending(log, schema, "contacts", "delete", %{"contact_id" => contact.id})
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
 
     assert result.output =~ "supprimé"
     assert Repo.get(Contact, contact.id, prefix: schema) == nil
@@ -110,7 +111,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
         "subject" => todo.subject
       })
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
 
     assert result.output =~ "modifiée"
 
@@ -132,7 +133,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
         "subject" => todo.subject
       })
 
-    Mutations.confirm(pending.pending_id, "confirm")
+    Mutations.confirm_system(pending.pending_id, "confirm", schema)
 
     updated = Repo.get!(Todo, todo.id, prefix: schema)
     assert updated.subject == "Titre renommé"
@@ -144,7 +145,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
     todo = first_todo(schema, user_id)
     pending = put_pending(log, schema, "todos", "delete", %{"todo_id" => todo.id})
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
 
     assert result.output =~ "supprimée"
     assert Repo.get(Todo, todo.id, prefix: schema) == nil
@@ -156,7 +157,8 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
     contact = first_contact(schema)
     pending = put_pending(log, schema, "contacts", "delete", %{"contact_id" => contact.id})
 
-    assert {:error, :invalid_decision} = Mutations.confirm(pending.pending_id, "maybe")
+    assert {:error, :invalid_decision} =
+             Mutations.confirm_system(pending.pending_id, "maybe", schema)
   end
 
   # ── Fan-out confirm ───────────────────────────────────────────────────
@@ -175,7 +177,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
         "routing_path" => "deterministic"
       })
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
 
     assert result.action == "create"
     assert result.output =~ "opération"
@@ -186,7 +188,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
   test "unsupported module/action returns non-supportée message", %{log: log, schema: schema} do
     pending = put_pending(log, schema, "help", "export", %{})
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
 
     assert result.output =~ "non supportée"
   end
@@ -202,7 +204,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
         "type" => "export_email"
       })
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "admin@example.fr")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "admin@example.fr", schema)
 
     assert result.output =~ "email" or result.output =~ "envoyées"
     assert result.action == "dump"
@@ -222,7 +224,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
         "routing_path" => "deterministic"
       })
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
     assert result.output =~ "Module inconnu"
   end
 
@@ -245,11 +247,11 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
       )
 
     pending =
-      put_pending(log, schema, "appointments", "cancel", %{
+      put_pending(log, schema, "todos", "cancel_appointment", %{
         "todo_id" => todo_id
       })
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
     assert result.output =~ "annulé"
   end
 
@@ -263,13 +265,13 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
     todo = first_todo(schema, user_id)
 
     pending =
-      put_pending(log, schema, "appointments", "reschedule", %{
+      put_pending(log, schema, "todos", "reschedule", %{
         "todo_id" => todo.id,
         "new_date" => "not-a-date",
         "new_time" => "bad"
       })
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
     assert result.output =~ "invalide"
   end
 
@@ -281,7 +283,8 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
         "type" => "export_email"
       })
 
-    assert {:error, :invalid_email} = Mutations.confirm(pending.pending_id, "not-an-email")
+    assert {:error, :invalid_email} =
+             Mutations.confirm_system(pending.pending_id, "not-an-email", schema)
   end
 
   test "export_email with whitespace returns invalid_email", %{log: log, schema: schema} do
@@ -290,7 +293,8 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
         "type" => "export_email"
       })
 
-    assert {:error, :invalid_email} = Mutations.confirm(pending.pending_id, "bad @email .com")
+    assert {:error, :invalid_email} =
+             Mutations.confirm_system(pending.pending_id, "bad @email .com", schema)
   end
 
   # ── Expenses: delete ────────────────────────────────────────────────────
@@ -315,7 +319,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
     pending =
       put_pending(log, schema, "expenses", "delete", %{"expense_id" => expense.id})
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
     assert result.output =~ "supprimée"
     assert Repo.get(Expense, expense.id, prefix: schema) == nil
   end
@@ -340,13 +344,13 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
     new_date = Date.add(Date.utc_today(), 7) |> Date.to_iso8601()
 
     pending =
-      put_pending(log, schema, "appointments", "reschedule", %{
+      put_pending(log, schema, "todos", "reschedule", %{
         "todo_id" => todo_id,
         "new_date" => new_date,
         "new_time" => "15:00"
       })
 
-    {:ok, result} = Mutations.confirm(pending.pending_id, "confirm")
+    {:ok, result} = Mutations.confirm_system(pending.pending_id, "confirm", schema)
     assert result.output =~ "reprogrammé"
 
     updated = Repo.get!(Todo, todo_id, prefix: schema)

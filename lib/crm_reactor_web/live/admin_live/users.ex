@@ -16,8 +16,8 @@ defmodule CrmReactorWeb.AdminLive.Users do
       |> stream(:accounts, [])
 
     if connected?(socket) do
-      account_emails =
-        Repo.all(from(a in Accounts.Account, where: a.role == "user", select: a.email))
+      accounts = Accounts.list_user_accounts()
+      account_emails = Enum.map(accounts, & &1.email)
 
       users =
         from(u in UserMapping,
@@ -27,7 +27,6 @@ defmodule CrmReactorWeb.AdminLive.Users do
         |> Repo.all()
 
       tenants = Repo.all(from(t in Tenant, select: t.tenant_id, order_by: t.tenant_id))
-      accounts = Accounts.list_user_accounts()
 
       {:ok,
        socket
@@ -66,7 +65,7 @@ defmodule CrmReactorWeb.AdminLive.Users do
     </.admin_form>
 
     <h2 style="margin-top:24px;font-size:1.1rem;font-weight:600;">User Accounts</h2>
-    <.admin_table rows={@streams.accounts} cols={["Email", "Name", "Tenant", "Status", "Actions"]}>
+    <.admin_table id="accounts" rows={@streams.accounts} cols={["Email", "Name", "Tenant", "Status", "Actions"]}>
       <:col :let={{_id, acct}}>
         <td style="padding:10px 16px;font-size:0.875rem;font-weight:500;"><%= acct.email %></td>
         <td style="padding:10px 16px;font-size:0.875rem;"><%= acct.name || "-" %></td>
@@ -123,7 +122,7 @@ defmodule CrmReactorWeb.AdminLive.Users do
       <button type="submit" style="padding:8px 20px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:0.875rem;cursor:pointer;">Add User</button>
     </.admin_form>
 
-    <.admin_table rows={@streams.users} cols={["ID", "Tenant", "Email", "Telegram ID", "Actions"]}>
+    <.admin_table id="users" rows={@streams.users} cols={["ID", "Tenant", "Email", "Telegram ID", "Actions"]}>
       <:col :let={{_id, user}}>
         <td style="padding:10px 16px;font-size:0.875rem;color:#999;"><%= user.id %></td>
         <td style="padding:10px 16px;font-size:0.875rem;font-weight:500;"><%= user.tenant_id %></td>

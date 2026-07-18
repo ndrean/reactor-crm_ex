@@ -4,12 +4,10 @@ defmodule CrmReactor.Reactors.Steps.DispatchModule do
 
   alias CrmReactor.AI.SubscriptionCache
   alias CrmReactor.CRM.ExecutionLog
-  alias CrmReactor.Reactors.WorkflowInterpreter
+  alias CrmReactor.Reactors.{PendingHelper, WorkflowInterpreter}
   alias CrmReactor.Repo
-  alias CrmReactor.Workers.PendingTimeoutWorker
 
   @destructive_actions ~w[update delete]
-  @pending_timeout_seconds 15 * 60
 
   @impl true
   def run(
@@ -99,11 +97,8 @@ defmodule CrmReactor.Reactors.Steps.DispatchModule do
      }}
   end
 
-  defp schedule_pending_timeout(pending_id, schema) do
-    %{"pending_id" => pending_id, "schema_name" => schema}
-    |> PendingTimeoutWorker.new(schedule_in: @pending_timeout_seconds)
-    |> Oban.insert()
-  end
+  defp schedule_pending_timeout(pending_id, schema),
+    do: PendingHelper.schedule_pending_timeout(pending_id, schema)
 
   defp workflow_modules do
     Application.get_env(:crm_reactor, :workflow_modules)

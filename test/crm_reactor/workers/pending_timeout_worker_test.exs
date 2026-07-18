@@ -11,7 +11,11 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
     Map.put(fixture, :tenant_map, TestFixtures.tenant_map(fixture))
   end
 
-  test "perform/1 auto-rejects a pending mutation", %{user_id: user_id, tenant_map: tenant_map} do
+  test "perform/1 auto-rejects a pending mutation", %{
+    user_id: user_id,
+    tenant: tenant,
+    tenant_map: tenant_map
+  } do
     {:ok, result} =
       Reactor.run(CrmReactor.Reactors.MasterIngest, %{
         user_id: user_id,
@@ -26,15 +30,24 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
     assert result.action == "pending"
     pending_id = result.pending_id
 
-    assert :ok = perform_job(PendingTimeoutWorker, %{"pending_id" => pending_id})
+    assert :ok =
+             perform_job(PendingTimeoutWorker, %{
+               "pending_id" => pending_id,
+               "schema_name" => tenant.schema_name
+             })
   end
 
-  test "perform/1 returns :ok for non-existent pending_id" do
-    assert :ok = perform_job(PendingTimeoutWorker, %{"pending_id" => Ecto.UUID.generate()})
+  test "perform/1 returns :ok for non-existent pending_id", %{tenant: tenant} do
+    assert :ok =
+             perform_job(PendingTimeoutWorker, %{
+               "pending_id" => Ecto.UUID.generate(),
+               "schema_name" => tenant.schema_name
+             })
   end
 
   test "perform/1 is idempotent - double rejection returns :ok", %{
     user_id: user_id,
+    tenant: tenant,
     tenant_map: tenant_map
   } do
     {:ok, result} =
@@ -50,8 +63,17 @@ defmodule CrmReactor.Workers.PendingTimeoutWorkerTest do
 
     pending_id = result.pending_id
 
-    assert :ok = perform_job(PendingTimeoutWorker, %{"pending_id" => pending_id})
-    assert :ok = perform_job(PendingTimeoutWorker, %{"pending_id" => pending_id})
+    assert :ok =
+             perform_job(PendingTimeoutWorker, %{
+               "pending_id" => pending_id,
+               "schema_name" => tenant.schema_name
+             })
+
+    assert :ok =
+             perform_job(PendingTimeoutWorker, %{
+               "pending_id" => pending_id,
+               "schema_name" => tenant.schema_name
+             })
   end
 
   test "perform/1 with schema_name key auto-rejects", %{

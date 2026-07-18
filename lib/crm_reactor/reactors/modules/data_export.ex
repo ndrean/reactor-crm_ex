@@ -4,10 +4,8 @@ defmodule CrmReactor.Reactors.Modules.DataExport do
   alias CrmReactor.CRM.ExecutionLog
   alias CrmReactor.Emails.DataExportEmail
   alias CrmReactor.Mailer
+  alias CrmReactor.Reactors.PendingHelper
   alias CrmReactor.Repo
-  alias CrmReactor.Workers.PendingTimeoutWorker
-
-  @pending_timeout_seconds 15 * 60
 
   # No admin_email on record: enter the 2-step pending loop to collect one.
   def execute(%{action: "dump", tenant_schema: schema, admin_email: nil, log_id: log_id}) do
@@ -20,9 +18,7 @@ defmodule CrmReactor.Reactors.Modules.DataExport do
       })
       |> Repo.update!(prefix: schema)
 
-    %{"pending_id" => log.pending_id, "schema_name" => schema}
-    |> PendingTimeoutWorker.new(schedule_in: @pending_timeout_seconds)
-    |> Oban.insert()
+    PendingHelper.schedule_pending_timeout(log.pending_id, schema)
 
     {:ok,
      %{

@@ -83,7 +83,7 @@ flowchart LR
 
 ## Architecture
 
-#### Ingestion pipeline
+### Ingestion pipeline
 
 ```mermaid
 graph TB
@@ -101,7 +101,7 @@ graph TB
     DM --> FR[FinalizeReply]
 ```
 
-#### Workflow modules
+### Workflow modules
 
 ```mermaid
 graph TB
@@ -122,7 +122,7 @@ graph TB
     WH -->|HMAC-signed POST| EXT[External System]
 ```
 
-#### Background workers
+### Background workers
 
 ```mermaid
 graph TB
@@ -188,7 +188,6 @@ flowchart TB
         step_finalize==>return_MasterIngest
     end
 ```
-
 
 ### Tiered query system
 

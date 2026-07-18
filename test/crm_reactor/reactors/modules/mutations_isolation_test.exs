@@ -76,15 +76,6 @@ defmodule CrmReactor.Reactors.Modules.MutationsIsolationTest do
     end
   end
 
-  test "system caller (nil user_id) can find pending across schemas", ctx do
-    pending_id = insert_pending_log(ctx.tenant_b.schema_name, ctx.user_b)
-
-    # System caller scans all schemas — finds it in tenant_b
-    assert_raise Ecto.NoResultsError, fn ->
-      Mutations.confirm(pending_id, "confirm", nil)
-    end
-  end
-
   test "different user in same tenant gets :unauthorized", ctx do
     # Create a second user mapping in tenant A
     alias CrmReactor.Tenants.UserMapping

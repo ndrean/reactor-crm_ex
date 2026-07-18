@@ -3,8 +3,8 @@ defmodule CrmReactor.Reactors.Modules.Contacts do
 
   alias CrmReactor.AI.{QueryBuilder, Telemetry}
   alias CrmReactor.CRM.{Contact, ExecutionLog}
+  alias CrmReactor.Reactors.PendingHelper
   alias CrmReactor.Repo
-  alias CrmReactor.Workers.PendingTimeoutWorker
   import Ecto.Query
 
   require Logger
@@ -274,10 +274,6 @@ defmodule CrmReactor.Reactors.Modules.Contacts do
     end)
   end
 
-  @pending_timeout_seconds 15 * 60
-  defp schedule_pending_timeout(pending_id, schema) do
-    %{"pending_id" => pending_id, "schema_name" => schema}
-    |> PendingTimeoutWorker.new(schedule_in: @pending_timeout_seconds)
-    |> Oban.insert()
-  end
+  defp schedule_pending_timeout(pending_id, schema),
+    do: PendingHelper.schedule_pending_timeout(pending_id, schema)
 end
