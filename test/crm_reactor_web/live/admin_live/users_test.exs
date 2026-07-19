@@ -114,12 +114,10 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
 
   describe "reset_password event" do
     test "sends password reset email", %{conn: conn, tenant_id: tid} do
-      account =
-        create_account(%{
-          email: "reset_#{System.unique_integer([:positive])}@test.com",
-          role: "user",
-          tenant_id: tid
-        })
+      email = "reset_#{System.unique_integer([:positive])}@test.com"
+
+      {:ok, account} =
+        Accounts.create_user_account(%{email: email, name: "Reset", tenant_id: tid})
 
       {:ok, view, _html} = live(conn, ~p"/admin/users")
 

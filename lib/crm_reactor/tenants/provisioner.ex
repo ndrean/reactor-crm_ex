@@ -123,6 +123,7 @@ defmodule CrmReactor.Tenants.Provisioner do
       location TEXT,
       reminder_minutes INTEGER DEFAULT 30,
       reminder_job_id BIGINT,
+      archived_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
     """)
@@ -139,6 +140,7 @@ defmodule CrmReactor.Tenants.Provisioner do
       contact_id BIGINT REFERENCES #{name}.contacts(id) ON DELETE SET NULL,
       status TEXT DEFAULT 'pending',
       attachment_key TEXT,
+      archived_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
     """)

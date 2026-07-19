@@ -181,30 +181,9 @@ defmodule CrmReactor.Accounts do
 
   def suspend_user(%UserMapping{} = mapping) do
     Repo.transaction(fn ->
-      case mapping |> UserMapping.changeset(%{status: "suspended"}) |> Repo.update() do
-        {:ok, updated} ->
-          case Repo.get_by(Account, email: mapping.email, tenant_id: mapping.tenant_id) do
-            nil ->
-              :ok
-
-            account ->
-              account
-              |> Ecto.Changeset.change(
-                suspended_at: DateTime.utc_now() |> DateTime.truncate(:second)
-              )
-              |> Repo.update!()
-
-              from(t in AccountToken,
-                where: t.account_id == ^account.id and t.context == "session"
-              )
-              |> Repo.delete_all()
-          end
-
-          updated
-
-        {:error, changeset} ->
-          Repo.rollback(changeset)
-      end
+      updated = update_mapping_or_rollback!(mapping, %{status: "suspended"})
+      suspend_linked_account(mapping.email, mapping.tenant_id)
+      updated
     end)
     |> tap(fn
       {:ok, _} -> TenantCache.reload()
@@ -214,18 +193,9 @@ defmodule CrmReactor.Accounts do
 
   def reactivate_user(%UserMapping{} = mapping) do
     Repo.transaction(fn ->
-      case mapping |> UserMapping.changeset(%{status: "active"}) |> Repo.update() do
-        {:ok, updated} ->
-          case Repo.get_by(Account, email: mapping.email, tenant_id: mapping.tenant_id) do
-            nil -> :ok
-            account -> account |> Ecto.Changeset.change(suspended_at: nil) |> Repo.update!()
-          end
-
-          updated
-
-        {:error, changeset} ->
-          Repo.rollback(changeset)
-      end
+      updated = update_mapping_or_rollback!(mapping, %{status: "active"})
+      reactivate_linked_account(mapping.email, mapping.tenant_id)
+      updated
     end)
     |> tap(fn
       {:ok, _} -> TenantCache.reload()
@@ -234,26 +204,72 @@ defmodule CrmReactor.Accounts do
   end
 
   def delete_user(%UserMapping{} = mapping) do
-    schema = "customer_#{mapping.tenant_id}"
-
     Repo.transaction(fn ->
-      archive_user_data(mapping.email, schema)
-
-      case Repo.get_by(Account, email: mapping.email, tenant_id: mapping.tenant_id) do
-        nil ->
-          :ok
-
-        account ->
-          from(t in AccountToken, where: t.account_id == ^account.id) |> Repo.delete_all()
-          Repo.delete!(account)
-      end
-
+      archive_user_data(mapping.email, "customer_#{mapping.tenant_id}")
+      delete_linked_account(mapping.email, mapping.tenant_id)
       Repo.delete!(mapping)
     end)
     |> tap(fn
       {:ok, _} -> TenantCache.reload()
       _ -> :ok
     end)
+  end
+
+  def link_webapp(%UserMapping{} = mapping, attrs) do
+    account_attrs = Map.merge(attrs, %{email: mapping.email, tenant_id: mapping.tenant_id})
+
+    Repo.transaction(fn ->
+      account = insert_or_rollback!(Account.invite_changeset(%Account{}, account_attrs))
+      update_mapping_or_rollback!(mapping, %{status: "pending"})
+      account
+    end)
+  end
+
+  defp update_mapping_or_rollback!(mapping, attrs) do
+    case mapping |> UserMapping.changeset(attrs) |> Repo.update() do
+      {:ok, updated} -> updated
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  defp insert_or_rollback!(changeset) do
+    case Repo.insert(changeset) do
+      {:ok, record} -> record
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  defp suspend_linked_account(email, tenant_id) do
+    case Repo.get_by(Account, email: email, tenant_id: tenant_id) do
+      nil ->
+        :ok
+
+      account ->
+        account
+        |> Ecto.Changeset.change(suspended_at: DateTime.utc_now() |> DateTime.truncate(:second))
+        |> Repo.update!()
+
+        from(t in AccountToken, where: t.account_id == ^account.id and t.context == "session")
+        |> Repo.delete_all()
+    end
+  end
+
+  defp reactivate_linked_account(email, tenant_id) do
+    case Repo.get_by(Account, email: email, tenant_id: tenant_id) do
+      nil -> :ok
+      account -> account |> Ecto.Changeset.change(suspended_at: nil) |> Repo.update!()
+    end
+  end
+
+  defp delete_linked_account(email, tenant_id) do
+    case Repo.get_by(Account, email: email, tenant_id: tenant_id) do
+      nil ->
+        :ok
+
+      account ->
+        from(t in AccountToken, where: t.account_id == ^account.id) |> Repo.delete_all()
+        Repo.delete!(account)
+    end
   end
 
   defp archive_user_data(email, schema) do
@@ -268,23 +284,6 @@ defmodule CrmReactor.Accounts do
       where: e.created_by == ^email and is_nil(e.archived_at)
     )
     |> Repo.update_all([set: [archived_at: now]], prefix: schema)
-  end
-
-  def link_webapp(%UserMapping{} = mapping, attrs) do
-    account_attrs = Map.merge(attrs, %{email: mapping.email, tenant_id: mapping.tenant_id})
-
-    Repo.transaction(fn ->
-      case %Account{} |> Account.invite_changeset(account_attrs) |> Repo.insert() do
-        {:ok, account} ->
-          case mapping |> UserMapping.changeset(%{status: "pending"}) |> Repo.update() do
-            {:ok, _} -> account
-            {:error, changeset} -> Repo.rollback(changeset)
-          end
-
-        {:error, changeset} ->
-          Repo.rollback(changeset)
-      end
-    end)
   end
 
   # Legacy functions kept for backward compat
