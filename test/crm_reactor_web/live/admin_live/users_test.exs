@@ -3,7 +3,7 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
 
   import Phoenix.LiveViewTest
 
-  alias CrmReactor.Repo
+  alias CrmReactor.{Accounts, Repo}
   alias CrmReactor.Tenants.{Provisioner, UserMapping}
 
   setup %{conn: conn} do
@@ -17,11 +17,11 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
   end
 
   describe "mount" do
-    test "renders three sections", %{conn: conn} do
+    test "renders unified page sections", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/admin/users")
       assert html =~ "Create User Account"
-      assert html =~ "User Accounts"
-      assert html =~ "Telegram Linkages"
+      assert html =~ "Link Telegram"
+      assert html =~ "All Users"
     end
   end
 
@@ -42,57 +42,10 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
       assert html =~ "Account created"
       assert html =~ email
     end
-  end
 
-  describe "toggle_suspend event" do
-    test "suspends and reactivates user account", %{conn: conn, tenant_id: tid} do
-      account =
-        create_account(%{
-          email: "suspend_#{System.unique_integer([:positive])}@test.com",
-          role: "user",
-          tenant_id: tid
-        })
-
-      {:ok, view, _html} = live(conn, ~p"/admin/users")
-
-      view
-      |> element(~s|button[phx-click=toggle_suspend][phx-value-id="#{account.id}"]|)
-      |> render_click()
-
-      assert render(view) =~ "suspended"
-    end
-  end
-
-  describe "add_user event" do
-    test "adds user mapping with email and telegram_id", %{conn: conn, tenant_id: tid} do
-      {:ok, view, _html} = live(conn, ~p"/admin/users")
-      email = "tguser_#{System.unique_integer([:positive])}@test.com"
-      tg_id = "#{System.unique_integer([:positive])}"
-
-      view
-      |> element("#add-user-form")
-      |> render_submit(%{
-        "tenant_id" => tid,
-        "email" => email,
-        "telegram_id" => tg_id
-      })
-
-      html = render(view)
-      assert html =~ email
-      assert html =~ "added to #{tid}"
-    end
-  end
-
-  describe "create_account error" do
     test "duplicate email shows error flash", %{conn: conn, tenant_id: tid} do
       email = "dup_#{System.unique_integer([:positive])}@test.com"
-
-      {:ok, _} =
-        CrmReactor.Accounts.create_user_account(%{
-          email: email,
-          name: "First",
-          tenant_id: tid
-        })
+      {:ok, _} = Accounts.create_user_account(%{email: email, name: "First", tenant_id: tid})
 
       {:ok, view, _html} = live(conn, ~p"/admin/users")
 
@@ -106,6 +59,56 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
 
       html = render(view)
       assert html =~ "has already been taken" or html =~ "email"
+    end
+  end
+
+  describe "suspend event" do
+    test "suspends a user", %{conn: conn, tenant_id: tid} do
+      email = "suspend_#{System.unique_integer([:positive])}@test.com"
+      {:ok, _} = Accounts.create_user_account(%{email: email, name: "S", tenant_id: tid})
+      mapping = Repo.get_by(UserMapping, email: email)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      view
+      |> element(~s|button[phx-click=suspend][phx-value-id="#{mapping.id}"]|)
+      |> render_click()
+
+      assert render(view) =~ "suspended"
+    end
+  end
+
+  describe "reactivate event" do
+    test "reactivates a suspended user", %{conn: conn, tenant_id: tid} do
+      email = "react_#{System.unique_integer([:positive])}@test.com"
+      {:ok, _} = Accounts.create_user_account(%{email: email, name: "R", tenant_id: tid})
+      mapping = Repo.get_by(UserMapping, email: email)
+      {:ok, suspended} = Accounts.suspend_user(mapping)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      view
+      |> element(~s|button[phx-click=reactivate][phx-value-id="#{suspended.id}"]|)
+      |> render_click()
+
+      assert render(view) =~ "reactivated"
+    end
+  end
+
+  describe "delete_user event" do
+    test "deletes a user", %{conn: conn, tenant_id: tid} do
+      email = "deluser_#{System.unique_integer([:positive])}@test.com"
+      {:ok, _} = Accounts.create_user_account(%{email: email, name: "Del", tenant_id: tid})
+      mapping = Repo.get_by(UserMapping, email: email)
+
+      {:ok, view, _html} = live(conn, ~p"/admin/users")
+
+      view
+      |> element(~s|button[phx-click=delete_user][phx-value-id="#{mapping.id}"]|)
+      |> render_click()
+
+      assert render(view) =~ "deleted"
+      assert Repo.get_by(UserMapping, email: email) == nil
     end
   end
 
@@ -128,67 +131,23 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
     end
   end
 
-  describe "toggle_suspend reactivate" do
-    test "reactivates a suspended account", %{conn: conn, tenant_id: tid} do
-      account =
-        create_account(%{
-          email: "react_#{System.unique_integer([:positive])}@test.com",
-          role: "user",
-          tenant_id: tid
-        })
-
-      {:ok, suspended} = CrmReactor.Accounts.suspend_account(account)
-      assert suspended.suspended_at
+  describe "link_telegram event" do
+    test "links telegram to existing user", %{conn: conn, tenant_id: tid} do
+      email = "linktg_#{System.unique_integer([:positive])}@test.com"
+      {:ok, _} = Accounts.create_user_mapping(%{email: email, tenant_id: tid})
 
       {:ok, view, _html} = live(conn, ~p"/admin/users")
+      tg_id = "#{System.unique_integer([:positive])}"
 
       view
-      |> element(~s|button[phx-click=toggle_suspend][phx-value-id="#{account.id}"]|)
-      |> render_click()
+      |> element("#link-telegram-form")
+      |> render_submit(%{
+        "user_key" => "#{email}|#{tid}",
+        "telegram_id" => tg_id
+      })
 
-      assert render(view) =~ "reactivated"
-    end
-  end
-
-  describe "delete_account event" do
-    test "deletes a suspended account", %{conn: conn, tenant_id: tid} do
-      account =
-        create_account(%{
-          email: "delacct_#{System.unique_integer([:positive])}@test.com",
-          role: "user",
-          tenant_id: tid
-        })
-
-      {:ok, _} = CrmReactor.Accounts.suspend_account(account)
-
-      {:ok, view, _html} = live(conn, ~p"/admin/users")
-
-      view
-      |> element(~s|button[phx-click=delete_account][phx-value-id="#{account.id}"]|)
-      |> render_click()
-
-      assert render(view) =~ "deleted"
-    end
-  end
-
-  describe "remove_mapping event" do
-    test "removes user mapping", %{conn: conn, tenant_id: tid} do
-      {:ok, mapping} =
-        %UserMapping{}
-        |> UserMapping.changeset(%{
-          tenant_id: tid,
-          email: "remove_me_#{System.unique_integer([:positive])}@test.com",
-          telegram_id: "#{System.unique_integer([:positive])}"
-        })
-        |> Repo.insert()
-
-      {:ok, view, _html} = live(conn, ~p"/admin/users")
-
-      view
-      |> element(~s|button[phx-click=remove_mapping][phx-value-id="#{mapping.id}"]|)
-      |> render_click()
-
-      assert render(view) =~ "removed"
+      html = render(view)
+      assert html =~ "linked"
     end
   end
 end

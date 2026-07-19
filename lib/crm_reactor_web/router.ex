@@ -140,7 +140,5 @@ defmodule CrmReactorWeb.Router do
     get "/metrics", MetricsController, :index
   end
 
-  if Mix.env() == :dev do
-    forward "/mailbox", Plug.Swoosh.MailboxPreview
-  end
+  forward "/mailbox", Plug.Swoosh.MailboxPreview
 end

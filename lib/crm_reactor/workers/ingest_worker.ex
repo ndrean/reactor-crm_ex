@@ -14,21 +14,33 @@ defmodule CrmReactor.Workers.IngestWorker do
   def perform(%Oban.Job{id: job_id, args: args}) do
     raw_user_id = args["user_id"]
 
-    with {:ok, tenant} <- TenantCache.lookup(raw_user_id) do
-      # Normalize to canonical email so created_by/triggered_by are consistent
-      user_id = TenantCache.resolve_canonical_id(raw_user_id)
+    case TenantCache.lookup(raw_user_id) do
+      {:error, :suspended} ->
+        maybe_send_reply(
+          args["channel"],
+          args["chat_id"],
+          %{output: "Votre accès a été suspendu. Contactez votre administrateur."}
+        )
 
-      input = %{
-        user_id: user_id,
-        raw_input: args["text"],
-        is_audio: args["is_audio"] || false,
-        channel: to_channel(args["channel"]),
-        job_id: "oban-#{job_id}",
-        attachment: nil,
-        tenant: tenant
-      }
+        {:cancel, :user_suspended}
 
-      run_pipeline(input, args)
+      {:error, :unknown_user} ->
+        {:error, :unknown_user}
+
+      {:ok, tenant} ->
+        user_id = TenantCache.resolve_canonical_id(raw_user_id)
+
+        input = %{
+          user_id: user_id,
+          raw_input: args["text"],
+          is_audio: args["is_audio"] || false,
+          channel: to_channel(args["channel"]),
+          job_id: "oban-#{job_id}",
+          attachment: nil,
+          tenant: tenant
+        }
+
+        run_pipeline(input, args)
     end
   end
 
@@ -77,7 +89,7 @@ defmodule CrmReactor.Workers.IngestWorker do
   defp resolve_schema(user_id) do
     case TenantCache.lookup(user_id) do
       {:ok, %{schema_name: schema}} -> schema
-      {:error, :unknown_user} -> nil
+      {:error, _} -> nil
     end
   end
 

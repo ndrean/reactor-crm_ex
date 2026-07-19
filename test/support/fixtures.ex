@@ -60,7 +60,8 @@ defmodule CrmReactor.TestFixtures do
       company_name: tenant.company_name,
       admin_email: tenant.admin_email,
       webhook_url: tenant.webhook_url,
-      webhook_secret: tenant.webhook_secret
+      webhook_secret: tenant.webhook_secret,
+      status: "active"
     }
   end
 

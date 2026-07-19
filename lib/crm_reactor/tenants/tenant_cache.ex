@@ -31,6 +31,7 @@ defmodule CrmReactor.Tenants.TenantCache do
   """
   def lookup(user_id) do
     case :ets.lookup(@table, user_id) do
+      [{^user_id, %{status: "suspended"}}] -> {:error, :suspended}
       [{^user_id, tenant}] -> {:ok, tenant}
       [] -> {:error, :unknown_user}
     end
@@ -94,7 +95,7 @@ defmodule CrmReactor.Tenants.TenantCache do
         on: t.tenant_id == m.tenant_id,
         where: t.is_active == true,
         select:
-          {m.email, m.telegram_id,
+          {m.email, m.telegram_id, m.status,
            %{
              tenant_id: t.tenant_id,
              schema_name: t.schema_name,
@@ -107,15 +108,17 @@ defmodule CrmReactor.Tenants.TenantCache do
       |> Repo.all()
 
     entries =
-      Enum.flat_map(rows, fn {email, telegram_id, tenant_map} ->
+      Enum.flat_map(rows, fn {email, telegram_id, status, tenant_map} ->
+        tenant_with_status = Map.put(tenant_map, :status, status || "active")
+
         if telegram_id,
-          do: [{email, tenant_map}, {telegram_id, tenant_map}],
-          else: [{email, tenant_map}]
+          do: [{email, tenant_with_status}, {telegram_id, tenant_with_status}],
+          else: [{email, tenant_with_status}]
       end)
 
     # Canonical ID table: maps any identifier → email
     canonical_entries =
-      Enum.flat_map(rows, fn {email, telegram_id, _tenant_map} ->
+      Enum.flat_map(rows, fn {email, telegram_id, _status, _tenant_map} ->
         if telegram_id,
           do: [{email, email}, {telegram_id, email}],
           else: [{email, email}]

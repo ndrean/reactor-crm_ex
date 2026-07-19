@@ -23,7 +23,9 @@ defmodule CrmReactor.Reactors.Modules.Todos do
         case QueryBuilder.build_query(Todo, ctx.raw_text) do
           {:ok, nl2sql_query} ->
             query =
-              from(t in nl2sql_query, where: t.created_by == ^ctx.user_id)
+              from(t in nl2sql_query,
+                where: t.created_by == ^ctx.user_id and is_nil(t.archived_at)
+              )
               |> apply_contact_filter(contact_name, contact)
 
             todos = Repo.all(with_contact_names(query), prefix: ctx.tenant_schema)
@@ -184,7 +186,9 @@ defmodule CrmReactor.Reactors.Modules.Todos do
 
     base =
       from(t in Todo,
-        where: not is_nil(t.starts_at) and t.done == false and t.created_by == ^ctx.user_id,
+        where:
+          not is_nil(t.starts_at) and t.done == false and t.created_by == ^ctx.user_id and
+            is_nil(t.archived_at),
         order_by: [asc: t.starts_at]
       )
 
@@ -300,7 +304,9 @@ defmodule CrmReactor.Reactors.Modules.Todos do
 
     query =
       from(t in Todo,
-        where: ilike(t.subject, ^pattern) and t.done == false and t.created_by == ^ctx.user_id
+        where:
+          ilike(t.subject, ^pattern) and t.done == false and t.created_by == ^ctx.user_id and
+            is_nil(t.archived_at)
       )
       |> apply_contact_filter(ctx.params["contact_name"], ctx.tenant_schema)
 
@@ -322,7 +328,8 @@ defmodule CrmReactor.Reactors.Modules.Todos do
           ilike(t.subject, ^pattern) and
             not is_nil(t.starts_at) and
             t.done == false and
-            t.created_by == ^ctx.user_id
+            t.created_by == ^ctx.user_id and
+            is_nil(t.archived_at)
       )
       |> apply_contact_filter(ctx.params["contact_name"], ctx.tenant_schema)
 
@@ -335,7 +342,11 @@ defmodule CrmReactor.Reactors.Modules.Todos do
   end
 
   defp execute_deterministic_list(params, contact_name, schema, user_id, contact) do
-    base = from(t in Todo, where: t.done == false and t.created_by == ^user_id)
+    base =
+      from(t in Todo,
+        where: t.done == false and t.created_by == ^user_id and is_nil(t.archived_at)
+      )
+
     base = apply_contact_filter(base, contact_name, contact)
     base = apply_date_filters(base, params)
     query = from(t in base, order_by: t.due_date) |> with_contact_names()

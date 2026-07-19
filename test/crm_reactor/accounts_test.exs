@@ -319,6 +319,118 @@ defmodule CrmReactor.AccountsTest do
     end
   end
 
+  # ── User management (UserMapping-based) ──────────────────────────────
+
+  describe "suspend_user/1" do
+    test "sets mapping status to suspended and suspends Account" do
+      email = "susp_#{System.unique_integer([:positive])}@test.com"
+
+      {:ok, account} =
+        Accounts.create_user_account(%{email: email, name: "S", tenant_id: "test_tenant"})
+
+      mapping = Repo.get_by(UserMapping, email: email)
+      token = Accounts.generate_account_session_token(account)
+
+      {:ok, updated} = Accounts.suspend_user(mapping)
+      assert updated.status == "suspended"
+
+      reloaded_account = Repo.get!(Account, account.id)
+      assert reloaded_account.suspended_at
+
+      assert Accounts.get_account_by_session_token(token) == nil
+    end
+
+    test "suspends telegram-only user (no Account)" do
+      email = "tg_susp_#{System.unique_integer([:positive])}@test.com"
+
+      {:ok, mapping} =
+        Accounts.create_user_mapping(%{
+          email: email,
+          tenant_id: "test_tenant",
+          telegram_id: "999888"
+        })
+
+      {:ok, updated} = Accounts.suspend_user(mapping)
+      assert updated.status == "suspended"
+    end
+  end
+
+  describe "reactivate_user/1" do
+    test "reactivates suspended user and clears Account suspended_at" do
+      email = "react_#{System.unique_integer([:positive])}@test.com"
+
+      {:ok, account} =
+        Accounts.create_user_account(%{email: email, name: "R", tenant_id: "test_tenant"})
+
+      mapping = Repo.get_by(UserMapping, email: email)
+
+      {:ok, suspended} = Accounts.suspend_user(mapping)
+      {:ok, reactivated} = Accounts.reactivate_user(suspended)
+      assert reactivated.status == "active"
+
+      reloaded_account = Repo.get!(Account, account.id)
+      assert is_nil(reloaded_account.suspended_at)
+    end
+  end
+
+  describe "delete_user/1" do
+    setup do
+      CrmReactor.TestFixtures.provision_test_tenant("del_user")
+      |> then(fn ctx ->
+        on_exit(fn -> CrmReactor.TestFixtures.cleanup_tenant(ctx) end)
+        ctx
+      end)
+    end
+
+    test "archives todos/expenses, deletes Account and mapping", ctx do
+      # Create an Account for this user
+      {:ok, account} =
+        Accounts.create_user_account(%{
+          email: ctx.user_id,
+          name: "Del",
+          tenant_id: ctx.tenant.tenant_id
+        })
+
+      mapping = Repo.get_by(UserMapping, email: ctx.user_id)
+
+      {:ok, _} = Accounts.delete_user(mapping)
+
+      # Mapping and account should be gone
+      assert Repo.get_by(UserMapping, email: ctx.user_id) == nil
+      assert Repo.get(Account, account.id) == nil
+
+      # Todos should be archived (archived_at set)
+      todos =
+        from(t in CrmReactor.CRM.Todo, where: t.created_by == ^ctx.user_id)
+        |> Repo.all(prefix: ctx.tenant.schema_name)
+
+      assert Enum.all?(todos, & &1.archived_at)
+
+      # Expenses should be archived
+      expenses =
+        from(e in CrmReactor.CRM.Expense, where: e.created_by == ^ctx.user_id)
+        |> Repo.all(prefix: ctx.tenant.schema_name)
+
+      assert Enum.all?(expenses, & &1.archived_at)
+    end
+  end
+
+  describe "list_all_users/0" do
+    test "returns all user mappings with account info" do
+      email = "all_#{System.unique_integer([:positive])}@test.com"
+
+      {:ok, _} =
+        Accounts.create_user_account(%{email: email, name: "All", tenant_id: "test_tenant"})
+
+      users = Accounts.list_all_users()
+      user = Enum.find(users, &(&1.email == email))
+      assert user
+      assert user.has_account == true
+      assert user.name == "All"
+      assert user.status == "pending"
+    end
+  end
+
   # ── Queries ────────────────────────────────────────────────────────────
 
   describe "list_user_accounts/0" do

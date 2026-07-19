@@ -5,34 +5,28 @@ defmodule CrmReactorWeb.AdminLive.Users do
   import Ecto.Query
 
   alias CrmReactor.{Accounts, Repo}
-  alias CrmReactor.Tenants.{Tenant, UserMapping}
+  alias CrmReactor.Tenants.Tenant
 
   @impl true
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(page_title: "Users", tenants: [])
+      |> assign(page_title: "Users", tenants: [], users_without_telegram: [])
       |> stream(:users, [])
-      |> stream(:accounts, [])
 
     if connected?(socket) do
-      accounts = Accounts.list_user_accounts()
-      account_emails = Enum.map(accounts, & &1.email)
-
-      users =
-        from(u in UserMapping,
-          where: u.email not in ^account_emails,
-          order_by: [asc: u.tenant_id, asc: u.email]
-        )
-        |> Repo.all()
-
+      users = Accounts.list_all_users()
       tenants = Repo.all(from(t in Tenant, select: t.tenant_id, order_by: t.tenant_id))
+
+      users_without_telegram =
+        users
+        |> Enum.filter(&is_nil(&1.telegram_id))
+        |> Enum.map(&{&1.email, &1.tenant_id})
 
       {:ok,
        socket
-       |> assign(tenants: tenants)
-       |> stream(:users, users, reset: true)
-       |> stream(:accounts, accounts, reset: true)}
+       |> assign(tenants: tenants, users_without_telegram: users_without_telegram)
+       |> stream(:users, users, reset: true)}
     else
       {:ok, socket}
     end
@@ -64,79 +58,100 @@ defmodule CrmReactorWeb.AdminLive.Users do
       <button type="submit" style="padding:8px 20px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:0.875rem;cursor:pointer;">Create & Send Invite</button>
     </.admin_form>
 
-    <h2 style="margin-top:24px;font-size:1.1rem;font-weight:600;">User Accounts</h2>
-    <.admin_table id="accounts" rows={@streams.accounts} cols={["Email", "Name", "Tenant", "Status", "Actions"]}>
-      <:col :let={{_id, acct}}>
-        <td style="padding:10px 16px;font-size:0.875rem;font-weight:500;"><%= acct.email %></td>
-        <td style="padding:10px 16px;font-size:0.875rem;"><%= acct.name || "-" %></td>
-        <td style="padding:10px 16px;font-size:0.875rem;font-family:monospace;"><%= acct.tenant_id %></td>
-        <td style="padding:10px 16px;font-size:0.875rem;">
-          <%= cond do %>
-            <% acct.suspended_at -> %>
-              <span style="color:#dc2626;font-weight:500;">Suspended</span>
-            <% acct.confirmed_at -> %>
-              <span style="color:#16a34a;">Active</span>
-            <% true -> %>
-              Pending invite
-          <% end %>
-        </td>
-        <td style="padding:10px 16px;font-size:0.875rem;">
-          <div style="display:flex;gap:8px;">
-            <button phx-click="reset_password" phx-value-id={acct.id} style="padding:4px 10px;background:#f59e0b;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;">
-              Reset password
-            </button>
-            <%= if acct.suspended_at do %>
-              <button phx-click="toggle_suspend" phx-value-id={acct.id} style="padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;">
-                Reactivate
-              </button>
-              <button phx-click="delete_account" phx-value-id={acct.id} style="padding:4px 10px;background:#7f1d1d;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;" data-confirm="Permanently delete this account and its mapping? This cannot be undone.">
-                Delete
-              </button>
-            <% else %>
-              <button phx-click="toggle_suspend" phx-value-id={acct.id} style="padding:4px 10px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;" data-confirm="Suspend this user? They will be logged out immediately.">
-                Suspend
-              </button>
-            <% end %>
-          </div>
-        </td>
-      </:col>
-    </.admin_table>
-
-    <h2 style="margin-top:32px;font-size:1.1rem;font-weight:600;">Telegram Linkages</h2>
-    <.admin_form id="add-user-form" phx_submit="add_user">
+    <h2 style="margin-top:32px;font-size:1.1rem;font-weight:600;">Link Telegram</h2>
+    <.admin_form id="link-telegram-form" phx_submit="link_telegram">
       <div>
-        <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Tenant</label>
-        <select name="tenant_id" required style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;">
-          <option value="">Select...</option>
-          <option :for={tid <- @tenants} value={tid}><%= tid %></option>
+        <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">User</label>
+        <select name="user_key" required style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;">
+          <option value="">Select user...</option>
+          <option :for={{email, tid} <- @users_without_telegram} value={"#{email}|#{tid}"}>
+            <%= email %> (<%= tid %>)
+          </option>
         </select>
-      </div>
-      <div>
-        <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Email</label>
-        <input type="email" name="email" required placeholder="user@example.com" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
       </div>
       <div>
         <label style="display:block;font-size:0.8rem;font-weight:500;margin-bottom:4px;">Telegram ID</label>
         <input type="text" name="telegram_id" required placeholder="123456789" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;" />
       </div>
-      <button type="submit" style="padding:8px 20px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:0.875rem;cursor:pointer;">Add User</button>
+      <button type="submit" style="padding:8px 20px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:0.875rem;cursor:pointer;">Link</button>
     </.admin_form>
 
-    <.admin_table id="users" rows={@streams.users} cols={["ID", "Tenant", "Email", "Telegram ID", "Actions"]}>
+    <h2 style="margin-top:24px;font-size:1.1rem;font-weight:600;">All Users</h2>
+    <.admin_table id="users" rows={@streams.users} cols={["Email", "Name", "Tenant", "Telegram", "Status", "Actions"]}>
       <:col :let={{_id, user}}>
-        <td style="padding:10px 16px;font-size:0.875rem;color:#999;"><%= user.id %></td>
-        <td style="padding:10px 16px;font-size:0.875rem;font-weight:500;"><%= user.tenant_id %></td>
-        <td style="padding:10px 16px;font-size:0.875rem;"><%= user.email %></td>
+        <td style="padding:10px 16px;font-size:0.875rem;font-weight:500;"><%= user.email %></td>
+        <td style="padding:10px 16px;font-size:0.875rem;"><%= user.name || "-" %></td>
+        <td style="padding:10px 16px;font-size:0.875rem;font-family:monospace;"><%= user.tenant_id %></td>
         <td style="padding:10px 16px;font-size:0.875rem;font-family:monospace;"><%= user.telegram_id || "-" %></td>
         <td style="padding:10px 16px;font-size:0.875rem;">
-          <button phx-click="remove_mapping" phx-value-id={user.id} style="padding:4px 10px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;" data-confirm="Remove this mapping? The user will lose access.">
-            Remove
-          </button>
+          <%= status_badge(user) %>
+        </td>
+        <td style="padding:10px 16px;font-size:0.875rem;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <%= if user.has_account do %>
+              <button phx-click="reset_password" phx-value-id={user.account_id} style="padding:4px 10px;background:#f59e0b;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;">
+                Reset password
+              </button>
+            <% else %>
+              <button phx-click="link_webapp" phx-value-id={user.id} style="padding:4px 10px;background:#4f46e5;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;">
+                Link Webapp
+              </button>
+            <% end %>
+            <%= if user.status == "suspended" do %>
+              <button phx-click="reactivate" phx-value-id={user.id} style="padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;">
+                Reactivate
+              </button>
+            <% else %>
+              <button phx-click="suspend" phx-value-id={user.id} style="padding:4px 10px;background:#dc2626;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;" data-confirm="Suspend this user? They will lose access on all channels.">
+                Suspend
+              </button>
+            <% end %>
+            <button phx-click="delete_user" phx-value-id={user.id} style="padding:4px 10px;background:#7f1d1d;color:#fff;border:none;border-radius:4px;font-size:0.75rem;cursor:pointer;" data-confirm="Permanently delete this user? Their todos and expenses will be archived.">
+              Delete
+            </button>
+          </div>
         </td>
       </:col>
     </.admin_table>
     """
   end
+
+  defp status_badge(user) do
+    case user.status do
+      "suspended" ->
+        Phoenix.HTML.raw(~s(<span style="color:#dc2626;font-weight:500;">Suspended</span>))
+
+      "pending" ->
+        if invite_expired?(user),
+          do: Phoenix.HTML.raw(~s(<span style="color:#9ca3af;font-weight:500;">Expired</span>)),
+          else: Phoenix.HTML.raw(~s(<span style="color:#f59e0b;">Pending invite</span>))
+
+      _ ->
+        channels =
+          [
+            if(user.has_account, do: "Web"),
+            if(user.telegram_id, do: "Telegram")
+          ]
+          |> Enum.filter(& &1)
+          |> Enum.join(" + ")
+
+        suffix =
+          if channels != "",
+            do: " <span style=\"color:#999;font-size:0.75rem;\">(#{channels})</span>",
+            else: ""
+
+        Phoenix.HTML.raw("<span style=\"color:#16a34a;\">Active</span>" <> suffix)
+    end
+  end
+
+  defp invite_expired?(%{has_account: true, confirmed_at: nil, account_created_at: created_at})
+       when not is_nil(created_at) do
+    DateTime.diff(DateTime.utc_now(), created_at, :hour) >= 24
+  end
+
+  defp invite_expired?(_), do: false
+
+  # ── Events ──────────────────────────────────────────────────────────────
 
   @impl true
   def handle_event(
@@ -150,18 +165,10 @@ defmodule CrmReactorWeb.AdminLive.Users do
       {:ok, account} ->
         base_url = CrmReactorWeb.Endpoint.url()
         Accounts.deliver_invite_email(account, base_url)
-
-        {:noreply,
-         socket
-         |> stream_insert(:accounts, account)
-         |> put_flash(:info, "Account created for #{email}. Invite email sent.")}
+        {:noreply, reload_users(socket, "Account created for #{email}. Invite email sent.")}
 
       {:error, changeset} ->
-        msg =
-          Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end)
-          |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{Enum.join(v, ", ")}" end)
-
-        {:noreply, put_flash(socket, :error, msg)}
+        {:noreply, put_flash(socket, :error, changeset_error_msg(changeset))}
     end
   end
 
@@ -173,136 +180,87 @@ defmodule CrmReactorWeb.AdminLive.Users do
     {:noreply, put_flash(socket, :info, "Password reset email sent to #{account.email}.")}
   end
 
-  def handle_event("toggle_suspend", %{"id" => id}, socket) do
-    account = Accounts.get_account!(id)
+  def handle_event("suspend", %{"id" => id}, socket) do
+    mapping = Accounts.get_user_mapping!(id)
 
-    {result, msg} =
-      if account.suspended_at do
-        {Accounts.reactivate_account(account), "#{account.email} reactivated."}
-      else
-        {Accounts.suspend_account(account), "#{account.email} suspended."}
-      end
-
-    case result do
-      {:ok, updated} ->
-        {:noreply,
-         socket
-         |> stream_insert(:accounts, updated)
-         |> put_flash(:info, msg)}
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to update account.")}
-    end
-  end
-
-  def handle_event("delete_account", %{"id" => id}, socket) do
-    account = Accounts.get_account!(id)
-
-    case Accounts.delete_account(account) do
+    case Accounts.suspend_user(mapping) do
       {:ok, _} ->
-        {:noreply,
-         socket
-         |> stream_delete(:accounts, account)
-         |> put_flash(:info, "Account #{account.email} deleted.")}
+        {:noreply, reload_users(socket, "#{mapping.email} suspended.")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete account.")}
+        {:noreply, put_flash(socket, :error, "Failed to suspend user.")}
     end
   end
 
-  @impl true
-  def handle_event(
-        "add_user",
-        %{"tenant_id" => tid, "email" => email, "telegram_id" => tg_id},
-        socket
-      ) do
-    case Accounts.check_email_tenant_conflict(email, tid) do
-      {:error, existing} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "#{email} is already associated with tenant '#{existing}'. Cannot add to '#{tid}'."
-         )}
+  def handle_event("reactivate", %{"id" => id}, socket) do
+    mapping = Accounts.get_user_mapping!(id)
 
-      :ok ->
-        insert_user_mapping(socket, tid, email, tg_id)
-    end
-  end
-
-  def handle_event(
-        "link_telegram",
-        %{"email" => email, "tenant_id" => tid, "telegram_id" => tg_id},
-        socket
-      ) do
-    case Accounts.link_telegram(email, tid, tg_id) do
+    case Accounts.reactivate_user(mapping) do
       {:ok, _} ->
-        {:noreply, put_flash(socket, :info, "Telegram #{tg_id} linked to #{email}.")}
-
-      {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "No mapping found for #{email} in #{tid}.")}
+        {:noreply, reload_users(socket, "#{mapping.email} reactivated.")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to link Telegram ID.")}
+        {:noreply, put_flash(socket, :error, "Failed to reactivate user.")}
     end
   end
 
-  def handle_event("remove_mapping", %{"id" => id}, socket) do
-    mapping = Accounts.delete_user_mapping!(id)
+  def handle_event("delete_user", %{"id" => id}, socket) do
+    mapping = Accounts.get_user_mapping!(id)
 
-    {:noreply,
-     socket
-     |> stream_delete(:users, mapping)
-     |> put_flash(:info, "Mapping for #{mapping.email} removed.")}
-  end
+    case Accounts.delete_user(mapping) do
+      {:ok, _} ->
+        {:noreply, reload_users(socket, "User #{mapping.email} deleted. Data archived.")}
 
-  defp insert_user_mapping(socket, tid, email, telegram_id) do
-    tg = if telegram_id != "", do: telegram_id
-
-    case Repo.get_by(UserMapping, email: email) do
-      %{tenant_id: ^tid} ->
-        do_link_telegram(socket, email, tid, tg)
-
-      %{tenant_id: other} ->
-        {:noreply,
-         put_flash(socket, :error, "#{email} is already associated with tenant '#{other}'.")}
-
-      nil ->
-        do_create_mapping(socket, tid, email, tg)
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete user.")}
     end
   end
 
-  defp do_link_telegram(socket, email, _tid, nil) do
-    {:noreply, put_flash(socket, :error, "#{email} already has a Telegram ID linked.")}
-  end
+  def handle_event("link_webapp", %{"id" => id}, socket) do
+    mapping = Accounts.get_user_mapping!(id)
 
-  defp do_link_telegram(socket, email, tid, tg) do
-    case Accounts.link_telegram(email, tid, tg) do
-      {:ok, user} ->
-        {:noreply,
-         socket
-         |> stream_insert(:users, user)
-         |> put_flash(:info, "Telegram #{tg} linked to #{email}")}
-
-      {:error, :already_linked} ->
-        {:noreply, put_flash(socket, :error, "#{email} already has a Telegram ID linked.")}
+    case Accounts.link_webapp(mapping, %{name: mapping.email}) do
+      {:ok, account} ->
+        base_url = CrmReactorWeb.Endpoint.url()
+        Accounts.deliver_invite_email(account, base_url)
+        {:noreply, reload_users(socket, "Webapp linked for #{mapping.email}. Invite sent.")}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, changeset_error_msg(changeset))}
     end
   end
 
-  defp do_create_mapping(socket, tid, email, tg) do
-    case Accounts.create_user_mapping(%{tenant_id: tid, email: email, telegram_id: tg}) do
-      {:ok, user} ->
-        {:noreply,
-         socket
-         |> stream_insert(:users, user)
-         |> put_flash(:info, "User #{email} added to #{tid}")}
+  def handle_event("link_telegram", %{"user_key" => key, "telegram_id" => tg_id}, socket) do
+    case String.split(key, "|", parts: 2) do
+      [email, tid] ->
+        case Accounts.link_telegram(email, tid, tg_id) do
+          {:ok, _} ->
+            {:noreply, reload_users(socket, "Telegram #{tg_id} linked to #{email}.")}
 
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, changeset_error_msg(changeset))}
+          {:error, :already_linked} ->
+            {:noreply, put_flash(socket, :error, "#{email} already has a Telegram ID linked.")}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Failed to link Telegram ID.")}
+        end
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Invalid user selection.")}
     end
+  end
+
+  defp reload_users(socket, flash_msg) do
+    users = Accounts.list_all_users()
+
+    users_without_telegram =
+      users
+      |> Enum.filter(&is_nil(&1.telegram_id))
+      |> Enum.map(&{&1.email, &1.tenant_id})
+
+    socket
+    |> assign(users_without_telegram: users_without_telegram)
+    |> stream(:users, users, reset: true)
+    |> put_flash(:info, flash_msg)
   end
 
   defp changeset_error_msg(changeset) do

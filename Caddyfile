@@ -3,7 +3,21 @@
 		reverse_proxy grafana:3000
 	}
 
+	handle /live* {
+		reverse_proxy tasks.app:4000 {
+			lb_policy cookie
+			transport http {
+				keepalive 30s
+			}
+		}
+	}
+
 	handle {
-		reverse_proxy app:4000
+		reverse_proxy tasks.app:4000 {
+			lb_policy cookie
+			transport http {
+				keepalive 30s
+			}
+		}
 	}
 }

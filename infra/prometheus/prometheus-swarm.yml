@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "crm_reactor"
+    scrape_interval: 10s
+    metrics_path: "/metrics"
+    authorization:
+      credentials_file: /run/secrets/admin_token
+    dns_sd_configs:
+      - names:
+          - "tasks.app"
+        type: A
+        port: 4000
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance

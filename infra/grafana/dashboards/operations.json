@@ -1,0 +1,104 @@
+{
+  "uid": "crm-operations",
+  "title": "CRM Reactor - Operations",
+  "tags": ["crm-reactor"],
+  "timezone": "browser",
+  "editable": true,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": { "uid": "prometheus" },
+        "query": "label_values(up{job=\"crm_reactor\"}, instance)",
+        "refresh": 2,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" },
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Active Replicas",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        { "expr": "count(up{job=\"crm_reactor\"} == 1)", "legendFormat": "" }
+      ],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 2 }, { "color": "green", "value": 3 }] } } }
+    },
+    {
+      "title": "Total Request Rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(crm_reactor_prom_ex_phoenix_http_request_duration_milliseconds_count[5m]))", "legendFormat": "" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "Total DB Pool Usage",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(crm_reactor_prom_ex_ecto_repo_query_total_time_milliseconds_count)", "legendFormat": "" }
+      ]
+    },
+    {
+      "title": "Total Oban Jobs Active",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(crm_reactor_prom_ex_oban_job_queue_running_length)", "legendFormat": "" }
+      ]
+    },
+    {
+      "title": "Per-Replica Request Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(crm_reactor_prom_ex_phoenix_http_request_duration_milliseconds_count{instance=~\"$instance\"}[5m])", "legendFormat": "{{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "Per-Replica Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        { "expr": "crm_reactor_prom_ex_beam_memory_total{instance=~\"$instance\"}", "legendFormat": "{{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "title": "Per-Replica Oban Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(crm_reactor_prom_ex_oban_job_stop_duration_milliseconds_count{instance=~\"$instance\"}[5m])", "legendFormat": "{{instance}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "title": "Per-Replica WebSocket Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        { "expr": "crm_reactor_prom_ex_phoenix_socket_connected_total{instance=~\"$instance\"}", "legendFormat": "{{instance}}" }
+      ]
+    }
+  ],
+  "annotations": { "list": [] },
+  "schemaVersion": 39
+}

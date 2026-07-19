@@ -1,7 +1,20 @@
 import Config
 
+# Read Docker secrets from /run/secrets/{name} if available, else fall back to env var.
+# This supports both Docker Swarm (secrets mounted as files) and dev/CI (env vars).
+read_secret = fn name, env_var, default ->
+  secret_path = "/run/secrets/#{name}"
+
+  case File.read(secret_path) do
+    {:ok, value} -> String.trim(value)
+    {:error, _} -> System.get_env(env_var, default)
+  end
+end
+
+telegram_bot_token = read_secret.("telegram_bot_token", "TELEGRAM_BOT_TOKEN", nil)
+
 config :crm_reactor,
-  mistral_api_key: System.get_env("MISTRAL_API_KEY"),
+  mistral_api_key: read_secret.("mistral_api_key", "MISTRAL_API_KEY", nil),
   mistral_model_small: System.get_env("MISTRAL_MODEL_SMALL", "mistral-small-latest"),
   mistral_model_large: System.get_env("MISTRAL_MODEL_LARGE", "codestral-latest"),
   mistral_vision_model: System.get_env("MISTRAL_VISION_MODEL", "ministral-3b-2512"),
@@ -10,20 +23,26 @@ config :crm_reactor,
   whisper_url: System.get_env("WHISPER_URL", "http://127.0.0.1:8000"),
   whisper_provider:
     if(System.get_env("WHISPER_PROVIDER") == "mistral", do: :mistral, else: :local),
-  telegram_bot_token: System.get_env("TELEGRAM_BOT_TOKEN"),
-  telegram_secret_token: System.get_env("TELEGRAM_SECRET_TOKEN"),
+  telegram_bot_token: telegram_bot_token,
+  telegram_secret_token: read_secret.("telegram_secret_token", "TELEGRAM_SECRET_TOKEN", nil),
   admin_token:
     if(config_env() == :prod,
-      do: System.get_env("ADMIN_TOKEN") || raise("ADMIN_TOKEN env var is required in prod"),
-      else: System.get_env("ADMIN_TOKEN", "dev-admin-token")
+      do:
+        read_secret.("admin_token", "ADMIN_TOKEN", nil) ||
+          raise("ADMIN_TOKEN secret or env var is required in prod"),
+      else: read_secret.("admin_token", "ADMIN_TOKEN", "dev-admin-token")
     ),
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads")
 
-config :telegex, token: System.get_env("TELEGRAM_BOT_TOKEN")
+config :telegex, token: telegram_bot_token
 
 cloak_key =
-  System.get_env("CLOAK_KEY") ||
-    Base.encode64(:crypto.strong_rand_bytes(32))
+  read_secret.("cloak_key", "CLOAK_KEY", nil) ||
+    if config_env() == :prod do
+      raise "CLOAK_KEY secret or env var is required in prod"
+    else
+      Base.encode64(:crypto.strong_rand_bytes(32))
+    end
 
 config :crm_reactor, CrmReactor.Vault,
   ciphers: [
@@ -44,9 +63,9 @@ end
 
 if config_env() == :prod do
   database_url =
-    System.get_env("DATABASE_URL") ||
+    read_secret.("database_url", "DATABASE_URL", nil) ||
       raise """
-      environment variable DATABASE_URL is missing.
+      DATABASE_URL secret or environment variable is missing.
       For example: ecto://USER:PASS@HOST/DATABASE
       """
 
@@ -58,9 +77,9 @@ if config_env() == :prod do
     socket_options: maybe_ipv6
 
   secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
+    read_secret.("secret_key_base", "SECRET_KEY_BASE", nil) ||
       raise """
-      environment variable SECRET_KEY_BASE is missing.
+      SECRET_KEY_BASE secret or environment variable is missing.
       You can generate one by calling: mix phx.gen.secret
       """
 

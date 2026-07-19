@@ -46,7 +46,10 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
 
   def execute(%{action: "list"} = ctx) do
     base =
-      from(e in Expense, where: e.created_by == ^ctx.user_id, order_by: [desc: e.expense_date])
+      from(e in Expense,
+        where: e.created_by == ^ctx.user_id and is_nil(e.archived_at),
+        order_by: [desc: e.expense_date]
+      )
 
     base = apply_filters(base, ctx.params)
     expenses = Repo.all(base, prefix: ctx.tenant_schema)
@@ -101,7 +104,11 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
     pattern = "%#{description}%"
 
     query =
-      from(e in Expense, where: e.created_by == ^ctx.user_id and ilike(e.description, ^pattern))
+      from(e in Expense,
+        where:
+          e.created_by == ^ctx.user_id and ilike(e.description, ^pattern) and
+            is_nil(e.archived_at)
+      )
 
     query =
       case parse_amount(ctx.params["amount"]) do

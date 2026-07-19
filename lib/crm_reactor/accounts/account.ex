@@ -14,6 +14,7 @@ defmodule CrmReactor.Accounts.Account do
     field :tenant_id, :string
     field :confirmed_at, :utc_datetime
     field :suspended_at, :utc_datetime
+    field :telegram_id, :string, virtual: true
 
     timestamps(type: :utc_datetime)
   end

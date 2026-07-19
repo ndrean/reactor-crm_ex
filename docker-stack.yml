@@ -1,0 +1,204 @@
+# Docker Swarm stack — deploy with: docker stack deploy -c docker-stack.yml crm
+# For local dev, use: docker compose up (uses docker-compose.yml + override)
+
+services:
+  postgres:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: crm_reactor_prod
+    secrets:
+      - postgres_user
+      - postgres_password
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$(cat /run/secrets/postgres_user) -d crm_reactor_prod"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  migrate:
+    image: ${CRM_IMAGE:-crm_reactor:latest}
+    command: /app/bin/migrate
+    environment:
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    secrets:
+      - database_url
+      - secret_key_base
+      - cloak_key
+      - admin_token
+    networks:
+      - backend
+    deploy:
+      replicas: 0
+      restart_policy:
+        condition: none
+
+  app:
+    image: ${CRM_IMAGE:-crm_reactor:latest}
+    environment:
+      PHX_SERVER: "true"
+      PHX_HOST: ${PHX_HOST:-localhost}
+      PORT: "4000"
+      POOL_SIZE: "35"
+      RELEASE_DISTRIBUTION: none
+      MISTRAL_MODEL_SMALL: ${MISTRAL_MODEL_SMALL:-mistral-small-latest}
+      MISTRAL_MODEL_LARGE: ${MISTRAL_MODEL_LARGE:-mistral-medium-latest}
+      MISTRAL_VISION_MODEL: ${MISTRAL_VISION_MODEL:-ministral-3b-2512}
+      WHISPER_PROVIDER: ${WHISPER_PROVIDER:-mistral}
+      STORAGE_PATH: ${STORAGE_PATH:-priv/uploads}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+    secrets:
+      - database_url
+      - secret_key_base
+      - mistral_api_key
+      - cloak_key
+      - admin_token
+      - telegram_bot_token
+      - telegram_secret_token
+    networks:
+      - frontend
+      - backend
+      - monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4000/api/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    stop_grace_period: 5s
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 30s
+        failure_action: rollback
+        order: start-first
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - frontend
+      - monitoring
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 128M
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./infra/prometheus/prometheus-swarm.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    secrets:
+      - admin_token
+    networks:
+      - monitoring
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:?GF_SECURITY_ADMIN_PASSWORD must be set}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_UNIFIED_ALERTING_ENABLED: "false"
+      GF_ALERTING_ENABLED: "false"
+      GF_DATAPROXY_TIMEOUT: "60"
+      GF_DATAPROXY_KEEP_ALIVE_SECONDS: "30"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    networks:
+      - monitoring
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 1536M
+      restart_policy:
+        condition: any
+        delay: 5s
+
+secrets:
+  database_url:
+    external: true
+  secret_key_base:
+    external: true
+  mistral_api_key:
+    external: true
+  cloak_key:
+    external: true
+  admin_token:
+    external: true
+  telegram_bot_token:
+    external: true
+  telegram_secret_token:
+    external: true
+  postgres_user:
+    external: true
+  postgres_password:
+    external: true
+
+networks:
+  frontend:
+    driver: overlay
+  backend:
+    driver: overlay
+  monitoring:
+    driver: overlay
+
+volumes:
+  pgdata:
+  promdata:
+  grafanadata:
+  caddy_data:
+  caddy_config:
