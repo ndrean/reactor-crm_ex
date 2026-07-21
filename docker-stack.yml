@@ -66,6 +66,8 @@ services:
       WHISPER_PROVIDER: ${WHISPER_PROVIDER:-mistral}
       STORAGE_PATH: ${STORAGE_PATH:-priv/uploads}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      MAILER_FROM_EMAIL: ${MAILER_FROM_EMAIL:-noreply@crm-reactor.app}
+      MAILER_FROM_NAME: ${MAILER_FROM_NAME:-CRM Reactor}
     secrets:
       - database_url
       - secret_key_base
