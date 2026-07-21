@@ -3,7 +3,7 @@
 A multi-tenant Natural Language Execution Router: an AI-assisted workflow runner to execute Elixir modules with OTP execution guarantees.
 
 Uses **Reactor** for workflow orchestration, **Oban** for durable job processing.
-**Phoenix** is used as the HTTP/webhook gateway, and Telegram for mobile devices.
+**Phoenix/LiveView** is used as the HTTP/webhook gateway for _admin_ or _user_, and `Telegram` for mobile devices for _users_.
 
 ## Deploy on a VPS
 
@@ -17,7 +17,9 @@ docker compose up -d --build
 
 The `migrate` service runs automatically before the app starts — it runs migrations and creates the admin account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in your `.env-docker`.
 
-The stack includes: **Postgres**, the **app** (Elixir release), **Caddy** (auto-HTTPS reverse proxy), **Prometheus** and **Grafana** (monitoring). Set `SITE_ADDRESS=yourdomain.com` in `.env-docker` for Caddy to auto-provision TLS.
+The stack includes: **Postgres**, the **app** (Elixir release), **Caddy** (auto-HTTPS reverse proxy), **Prometheus** and **Grafana** (monitoring).
+
+Set `SITE_ADDRESS=yourdomain.com` in `.env-docker` for Caddy to auto-provision TLS.
 
 ### 1. Configure `.env-docker`
 
@@ -577,11 +579,50 @@ Services:
 | **prometheus** | `localhost:9090` | Metrics scraper |
 | **grafana** | `localhost:3000` | Dashboards (admin/admin) |
 
-### Create admin user
+### Admin account setup
+
+There are three ways to create the first admin account, depending on your environment:
+
+**Option A: Environment variables (Docker deploy)**
+
+Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env-docker`. The `migrate` service creates the account automatically on first boot.
+
+**Option B: Web bootstrap (fresh deploy without CLI access)**
+
+Set the `BOOTSTRAP_TOKEN` environment variable, then visit:
+
+```
+https://yourdomain.com/setup?token=YOUR_BOOTSTRAP_TOKEN
+```
+
+This page only works when **zero admin accounts exist** and the token matches. After creating the first admin, the page self-disables (returns "Setup already completed").
+
+**Option C: Mix task (local development)**
 
 ```sh
-mix crm.create_admin admin@example.com change-password
+mix crm.create_admin admin@example.com your-password
 ```
+
+### Managing admin accounts
+
+In production, use the `admin` CLI from the release container:
+
+```bash
+# List all admins
+docker compose exec app /app/bin/admin list
+
+# Delete an admin (refuses if it's the last one)
+docker compose exec app /app/bin/admin delete old-admin@example.com
+
+# Reset an admin's password (revokes all active sessions)
+docker compose exec app /app/bin/admin reset admin@example.com new-password
+```
+
+The **System Status** page at `/admin/system` shows:
+
+- Current domain configuration (PHX_HOST, base URL, calendar feed URL)
+- Telegram webhook status with match/mismatch indicator and a one-click "Fix Webhook" button
+- List of all admin accounts (read-only)
 
 ### Provision a tenant and add users
 
@@ -819,19 +860,26 @@ mix phx.server
 Telegram's servers must reach your Phoenix app. For local development, use a tunnel:
 
 ```bash
-# ngrok (recommended — no interstitial page blocking API calls)
-ngrok http 4000
+# ngrok
+ngrok http 80
 # → gives you https://abc123.ngrok-free.app
+
+# cloudflared
+cloudflared tunnel --url http://127.0.0.1:80
 
 # localtunnel (may show a "click to continue" page that blocks webhooks)
 # npx localtunnel --port 4000 --subdomain my-crm
 ```
 
-> **Warning:** localtunnel's interstitial page blocks Telegram's automated POST requests, causing 408 timeouts. Use ngrok instead.
+> **Warning:** localtunnel's interstitial page blocks Telegram's automated POST requests, causing 408 timeouts. Use `ngrok` or `cloudflared` instead.
 
 ### Step 5: Register the webhook with Telegram
 
 This is the step that tells Telegram **where to forward messages**. Without it, messages stay on Telegram's servers and never reach your app.
+
+curl -X POST "https://api.telegram.org/bot8995638641:AAGLvkf5pjFfaKqw4ctCrj9rVRahXi_sFlA/setWebhook" \
+-H "Content-Type: application/json" \
+-d "{\"url\": \"https://molecular-wishing-eric-collections.trycloudflare.com/webhook/telegram\", \"secret_token\": \"secret-telegram-to-change\"}"
 
 ```bash
 curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \

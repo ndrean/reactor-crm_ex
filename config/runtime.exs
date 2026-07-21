@@ -32,7 +32,8 @@ config :crm_reactor,
           raise("ADMIN_TOKEN secret or env var is required in prod"),
       else: read_secret.("admin_token", "ADMIN_TOKEN", "dev-admin-token")
     ),
-  storage_path: System.get_env("STORAGE_PATH", "priv/uploads")
+  storage_path: System.get_env("STORAGE_PATH", "priv/uploads"),
+  bootstrap_token: read_secret.("bootstrap_token", "BOOTSTRAP_TOKEN", nil)
 
 config :telegex, token: telegram_bot_token
 
@@ -93,6 +94,12 @@ if config_env() == :prod do
     http: [
       ip: {0, 0, 0, 0, 0, 0, 0, 0},
       port: port
+    ],
+    check_origin: [
+      "https://#{host}",
+      "http://#{host}",
+      "http://localhost",
+      "https://localhost"
     ],
     secret_key_base: secret_key_base
 end

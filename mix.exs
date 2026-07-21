@@ -61,6 +61,7 @@ defmodule CrmReactor.MixProject do
       {:oban, "~> 2.18"},
       {:reactor, "~> 0.11"},
       {:telegex, "~> 1.8"},
+      {:multipart, "~> 0.4"},
       {:req, "~> 0.5"},
       {:prom_ex, "~> 1.9"},
       {:cloak_ecto, "~> 1.3"},
@@ -75,11 +76,12 @@ defmodule CrmReactor.MixProject do
       {:swoosh, "~> 1.16"},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:tidewave, "~> 0.6", only: [:dev]},
       {:ecto_erd, "~> 0.7", only: :dev},
       {:mox, "~> 1.0", only: :test},
       {:excoveralls, "~> 0.18", only: :test},
-      {:lazy_html, ">= 0.1.0", only: :test}
+      {:lazy_html, ">= 0.1.0", only: :test},
+      {:ical, "~> 3.1"},
+      {:tz, "~> 0.28"}
     ]
   end
 

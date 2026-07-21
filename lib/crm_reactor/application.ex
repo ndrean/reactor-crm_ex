@@ -3,8 +3,15 @@ defmodule CrmReactor.Application do
 
   use Application
 
+  require Logger
+
   @impl true
   def start(_type, _args) do
+    if Application.get_env(:crm_reactor, CrmReactorWeb.Endpoint)[:server] &&
+         is_nil(System.get_env("PHX_HOST")) do
+      Logger.warning("PHX_HOST is not set — external URLs will use 'localhost'")
+    end
+
     children = [
       CrmReactor.PromEx,
       CrmReactorWeb.Telemetry,

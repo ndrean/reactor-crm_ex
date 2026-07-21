@@ -1,5 +1,33 @@
 defmodule CrmReactor.Telegram do
   @moduledoc "Telegram message sending and inline keyboard helpers."
+
+  def webhook_info do
+    case Telegex.get_webhook_info() do
+      {:ok, info} ->
+        {:ok,
+         %{
+           url: info.url,
+           pending_update_count: info.pending_update_count,
+           last_error_date: info.last_error_date,
+           last_error_message: info.last_error_message
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def set_webhook_url(url) do
+    secret = Application.get_env(:crm_reactor, :telegram_secret_token)
+    opts = if secret, do: [secret_token: secret], else: []
+
+    case Telegex.set_webhook(url, opts) do
+      {:ok, true} -> {:ok, true}
+      {:error, reason} -> {:error, reason}
+      other -> {:error, other}
+    end
+  end
+
   def send_message(chat_id, text) do
     Telegex.send_message(String.to_integer(chat_id), text)
   end

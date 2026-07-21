@@ -1,0 +1,32 @@
+#!/bin/sh
+set -eu
+
+cd -P -- "$(dirname -- "$0")/.."
+
+usage() {
+  echo "Usage: admin <command>"
+  echo ""
+  echo "Commands:"
+  echo "  list                   List all admin accounts"
+  echo "  delete EMAIL           Delete an admin account"
+  echo "  reset EMAIL PASSWORD   Reset an admin's password"
+  exit 1
+}
+
+case "${1:-}" in
+  list)
+    ./bin/crm_reactor eval "CrmReactor.Release.list_admins()"
+    ;;
+  delete)
+    [ -z "${2:-}" ] && echo "Error: EMAIL required" && usage
+    ./bin/crm_reactor eval "CrmReactor.Release.delete_admin(\"$2\")"
+    ;;
+  reset)
+    [ -z "${2:-}" ] && echo "Error: EMAIL required" && usage
+    [ -z "${3:-}" ] && echo "Error: PASSWORD required" && usage
+    ./bin/crm_reactor eval "CrmReactor.Release.reset_password(\"$2\", \"$3\")"
+    ;;
+  *)
+    usage
+    ;;
+esac

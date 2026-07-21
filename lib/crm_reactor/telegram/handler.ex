@@ -2,8 +2,10 @@ defmodule CrmReactor.Telegram.Handler do
   @moduledoc "Telegex webhook handler: text, voice, and callback query processing."
   use Telegex.Hook.GenHandler
 
+  alias CrmReactor.Accounts
   alias CrmReactor.Reactors.Modules.Mutations
   alias CrmReactor.Telegram
+  alias CrmReactor.Tenants.TenantCache
   alias CrmReactor.Workers.IngestWorker
 
   @impl true
@@ -12,6 +14,38 @@ defmodule CrmReactor.Telegram.Handler do
       server_port: 4001,
       secret_token: Application.get_env(:crm_reactor, :telegram_secret_token)
     }
+  end
+
+  @impl true
+  def on_update(%{message: %{text: "/calendar", chat: %{id: chat_id}}}) do
+    chat_id_str = to_string(chat_id)
+
+    with {:ok, %{schema_name: _}} <- TenantCache.lookup(chat_id_str),
+         email when is_binary(email) <- TenantCache.resolve_canonical_id(chat_id_str),
+         %{} = account <- Accounts.get_account_by_email(email),
+         {:ok, token} <- Accounts.get_or_create_calendar_token(account) do
+      url = "#{CrmReactorWeb.Endpoint.url()}/cal/#{token}"
+
+      Telegram.send_message(
+        chat_id_str,
+        """
+        📅 Votre calendrier CRM :
+        #{url}
+
+        Pour l'ajouter :
+        • Google Calendar → Autres agendas → À partir de l'URL → coller
+        • Apple Calendar → Fichier → Nouvel abonnement → coller
+        • Outlook → Ajouter un calendrier → À partir d'Internet → coller
+
+        Le calendrier se met à jour automatiquement.\
+        """
+      )
+    else
+      _ ->
+        Telegram.send_message(chat_id_str, "Aucun compte trouvé. Contactez votre administrateur.")
+    end
+
+    :ok
   end
 
   @impl true
@@ -58,8 +92,9 @@ defmodule CrmReactor.Telegram.Handler do
 
   def on_update(%{callback_query: %{data: data, message: %{chat: %{id: chat_id}}} = cq}) do
     [pending_id, decision] = String.split(data, ":")
+    user_id = TenantCache.resolve_canonical_id(to_string(chat_id)) || to_string(chat_id)
 
-    case Mutations.confirm(pending_id, decision, to_string(chat_id)) do
+    case Mutations.confirm(pending_id, decision, user_id) do
       {:ok, %{output: output}} ->
         Telegram.send_message(to_string(chat_id), output)
 

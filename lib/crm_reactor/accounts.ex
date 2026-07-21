@@ -40,6 +40,46 @@ defmodule CrmReactor.Accounts do
     :ok
   end
 
+  # ── Calendar tokens ───────────────────────────────────────────────────────
+
+  def generate_calendar_token(account) do
+    {encoded_token, token_struct} = AccountToken.build_calendar_token(account)
+    Repo.insert!(token_struct)
+    {:ok, encoded_token}
+  end
+
+  def get_or_create_calendar_token(account) do
+    existing =
+      from(t in AccountToken,
+        where: t.account_id == ^account.id and t.context == "calendar",
+        order_by: [desc: t.inserted_at],
+        limit: 1
+      )
+      |> Repo.one()
+
+    if existing do
+      {:ok, Base.url_encode64(existing.token, padding: false)}
+    else
+      generate_calendar_token(account)
+    end
+  end
+
+  def get_account_by_calendar_token(encoded_token) do
+    case AccountToken.verify_calendar_token_query(encoded_token) do
+      {:ok, query} -> Repo.one(query)
+      :error -> nil
+    end
+  end
+
+  def revoke_calendar_token(account) do
+    from(t in AccountToken,
+      where: t.account_id == ^account.id and t.context == "calendar"
+    )
+    |> Repo.delete_all()
+
+    :ok
+  end
+
   # ── Cross-channel tenant validation ────────────────────────────────────────
 
   @doc """
@@ -249,7 +289,9 @@ defmodule CrmReactor.Accounts do
         |> Ecto.Changeset.change(suspended_at: DateTime.utc_now() |> DateTime.truncate(:second))
         |> Repo.update!()
 
-        from(t in AccountToken, where: t.account_id == ^account.id and t.context == "session")
+        from(t in AccountToken,
+          where: t.account_id == ^account.id and t.context in ["session", "calendar"]
+        )
         |> Repo.delete_all()
     end
   end
@@ -339,6 +381,7 @@ defmodule CrmReactor.Accounts do
   # ── Queries ────────────────────────────────────────────────────────────────
 
   def get_account!(id), do: Repo.get!(Account, id)
+  def get_account_by_email(email), do: Repo.get_by(Account, email: email)
   def get_user_mapping!(id), do: Repo.get!(UserMapping, id)
 
   def list_all_users do

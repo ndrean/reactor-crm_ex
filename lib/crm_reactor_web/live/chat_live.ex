@@ -1,6 +1,7 @@
 defmodule CrmReactorWeb.ChatLive do
   use CrmReactorWeb, :live_view
 
+  alias CrmReactor.Accounts
   alias CrmReactor.Reactors.MasterIngest
   alias CrmReactor.Reactors.Modules.Mutations
   alias CrmReactor.Repo
@@ -24,6 +25,8 @@ defmodule CrmReactorWeb.ChatLive do
       |> assign(:email_input, "")
       |> assign(:loading, false)
       |> assign(:error, nil)
+      |> assign(:calendar_url, nil)
+      |> assign(:show_calendar, false)
       |> stream(:messages, [], limit: 100)
       |> allow_upload(:attachment,
         accept: ~w(.jpg .jpeg .png .gif .csv .txt .vcf),
@@ -119,6 +122,25 @@ defmodule CrmReactorWeb.ChatLive do
   end
 
   def handle_event("provide_email", _params, socket), do: {:noreply, socket}
+
+  def handle_event("toggle_calendar", _params, socket) do
+    show = not socket.assigns.show_calendar
+
+    if show and is_nil(socket.assigns.calendar_url) do
+      {:ok, token} = Accounts.get_or_create_calendar_token(socket.assigns.current_account)
+      url = "#{CrmReactorWeb.Endpoint.url()}/cal/#{token}"
+      {:noreply, assign(socket, show_calendar: true, calendar_url: url)}
+    else
+      {:noreply, assign(socket, show_calendar: show)}
+    end
+  end
+
+  def handle_event("regenerate_calendar", _params, socket) do
+    Accounts.revoke_calendar_token(socket.assigns.current_account)
+    {:ok, token} = Accounts.generate_calendar_token(socket.assigns.current_account)
+    url = "#{CrmReactorWeb.Endpoint.url()}/cal/#{token}"
+    {:noreply, assign(socket, calendar_url: url)}
+  end
 
   @impl true
   def handle_info({:run_reactor, text, attachment}, socket) do
@@ -237,11 +259,57 @@ defmodule CrmReactorWeb.ChatLive do
         </h1>
         <div style="display: flex; align-items: center; gap: 12px;">
           <span style="font-size: 0.85rem; color: #6b7280;"><%= @current_account.email %></span>
+          <button
+            phx-click="toggle_calendar"
+            style="font-size: 0.85rem; color: #2563eb; background: none; border: none; cursor: pointer; text-decoration: underline;"
+          >
+            Calendrier
+          </button>
           <a href="/logout" style="font-size: 0.85rem; color: #dc2626; text-decoration: none;">
             Déconnexion
           </a>
         </div>
       </div>
+
+      <%= if @show_calendar do %>
+        <div style="margin-bottom: 16px; padding: 14px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; font-size: 0.9rem;">
+          <div style="font-weight: 600; margin-bottom: 8px;">Flux calendrier iCal</div>
+          <%= if @calendar_url do %>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+              <input
+                id="calendar-url"
+                type="text"
+                value={@calendar_url}
+                readonly
+                style="flex: 1; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; background: #fff;"
+              />
+              <button
+                phx-hook="CopyToClipboard"
+                id="copy-cal-url"
+                data-copy-target="calendar-url"
+                style="padding: 6px 12px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;"
+              >
+                Copier
+              </button>
+              <button
+                phx-click="regenerate_calendar"
+                style="padding: 6px 12px; background: #6b7280; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem;"
+              >
+                Régénérer
+              </button>
+            </div>
+            <div style="color: #6b7280; font-size: 0.8rem; line-height: 1.5;">
+              <strong>Copiez l'URL ci-dessus</strong> puis collez-la dans votre application calendrier :
+              <br/>• <strong>Google Calendar</strong> : Autres agendas → À partir de l'URL → coller
+              <br/>• <strong>Apple Calendar</strong> : Fichier → Nouvel abonnement → coller
+              <br/>• <strong>Outlook</strong> : Ajouter un calendrier → À partir d'Internet → coller
+              <br/>Le calendrier se synchronise automatiquement.
+            </div>
+          <% else %>
+            <div style="color: #6b7280;">Chargement…</div>
+          <% end %>
+        </div>
+      <% end %>
 
       <div style="background: #fff; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; height: calc(100vh - 120px);">
         <%!-- Message list using LiveView streams --%>

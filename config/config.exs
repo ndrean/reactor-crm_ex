@@ -29,6 +29,8 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 config :phoenix, :json_library, Jason
 config :phoenix, :filter_parameters, ["password", "secret", "token", "hashed_password", "api_key"]
 

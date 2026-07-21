@@ -65,6 +65,15 @@ defmodule CrmReactorWeb.Router do
     post "/invite/:token", InviteController, :accept
   end
 
+  # Bootstrap: first-time admin setup (public, rate-limited)
+  scope "/", CrmReactorWeb do
+    pipe_through [:browser, :login_rate_limited]
+
+    live_session :bootstrap do
+      live "/setup", BootstrapLive, :index
+    end
+  end
+
   # Root redirect to login
   scope "/", CrmReactorWeb do
     pipe_through :browser
@@ -96,9 +105,15 @@ defmodule CrmReactorWeb.Router do
       live "/tenants", AdminLive.Tenants, :index
       live "/users", AdminLive.Users, :index
       live "/subscriptions", AdminLive.Subscriptions, :index
-      live "/logs", AdminLive.Logs, :index
       live "/setup", AdminLive.TelegramSetup, :index
+      live "/system", AdminLive.System, :index
     end
+  end
+
+  scope "/cal", CrmReactorWeb do
+    pipe_through [:rate_limited]
+
+    get "/:token", CalendarFeedController, :show
   end
 
   scope "/api", CrmReactorWeb do
