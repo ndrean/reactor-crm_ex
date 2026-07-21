@@ -81,6 +81,8 @@ if config_env() == :prod do
     api_key: read_secret.("mailjet_api_key", "MAILJET_API_KEY", nil),
     secret: read_secret.("mailjet_secret_key", "MAILJET_SECRET_KEY", nil)
 
+  config :swoosh, :api_client, Swoosh.ApiClient.Req
+
   config :crm_reactor, CrmReactor.Repo,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
