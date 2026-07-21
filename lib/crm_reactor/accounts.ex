@@ -178,7 +178,7 @@ defmodule CrmReactor.Accounts do
 
     case Mailer.deliver(email) do
       {:ok, _} ->
-        Logger.info("Invite email sent to #{account.email}")
+        Logger.info("Invite email sent from #{elem(email.from, 1)} to #{account.email}")
 
       {:error, reason} ->
         Logger.error("Failed to send invite email to #{account.email}: #{inspect(reason)}")
