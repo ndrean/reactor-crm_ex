@@ -75,8 +75,8 @@ if config_env() == :prod do
 
   config :crm_reactor, Sample.Mailer,
     adapter: Swoosh.Adapters.Mailjet,
-    api_key: System.get_env("MAILJET_API_KEY"),
-    secret: System.get_env("MAILJET_SECRET_KEY")
+    api_key: read_secret.("mailjet_api_key", "MAILJET_API_KEY", nil),
+    secret: read_secret.("mailjet_secret_key", "MAILJET_SECRET_KEY", nil)
 
   config :crm_reactor, CrmReactor.Repo,
     url: database_url,

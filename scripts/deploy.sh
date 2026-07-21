@@ -70,6 +70,9 @@ create_secrets() {
       ADMIN_TOKEN)          secret_name="admin_token" ;;
       TELEGRAM_BOT_TOKEN)   secret_name="telegram_bot_token" ;;
       TELEGRAM_SECRET_TOKEN) secret_name="telegram_secret_token" ;;
+      EMAIL_WEBHOOK_SECRET) secret_name="email_webhook_secret" ;;
+      MAILJET_API_KEY)      secret_name="mailjet_api_key" ;;
+      MAILJET_SECRET_KEY)   secret_name="mailjet_secret_key" ;;
       POSTGRES_USER)        secret_name="postgres_user" ;;
       POSTGRES_PASSWORD)    secret_name="postgres_password" ;;
     esac

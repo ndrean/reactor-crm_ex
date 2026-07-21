@@ -75,6 +75,8 @@ services:
       - telegram_bot_token
       - telegram_secret_token
       - email_webhook_secret
+      - mailjet_api_key
+      - mailjet_secret_key
     networks:
       - frontend
       - backend
@@ -190,6 +192,10 @@ secrets:
   telegram_secret_token:
     external: true
   email_webhook_secret:
+    external: true
+  mailjet_api_key:
+    external: true
+  mailjet_secret_key:
     external: true
   postgres_user:
     external: true
