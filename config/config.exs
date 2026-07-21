@@ -37,6 +37,7 @@ config :phoenix, :filter_parameters, ["password", "secret", "token", "hashed_pas
 config :crm_reactor, CrmReactor.Mailer, adapter: Swoosh.Adapters.Local
 config :swoosh, :api_client, false
 
+
 config :crm_reactor, Oban,
   repo: CrmReactor.Repo,
   queues: [ingest: 50, mutations: 10, maintenance: 1, webhooks: 5],

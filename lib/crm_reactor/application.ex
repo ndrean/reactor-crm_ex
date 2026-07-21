@@ -12,26 +12,35 @@ defmodule CrmReactor.Application do
       Logger.warning("PHX_HOST is not set — external URLs will use 'localhost'")
     end
 
-    children = [
-      CrmReactor.PromEx,
-      CrmReactorWeb.Telemetry,
-      CrmReactor.Repo,
-      CrmReactor.Vault,
-      {Finch,
-       name: CrmReactor.Finch,
-       pools: %{
-         "https://api.mistral.ai" => [size: 50, count: 1],
-         :default => [size: 10]
-       }},
-      CrmReactor.Tenants.TenantCache,
-      CrmReactor.AI.RegistryCache,
-      CrmReactor.AI.SubscriptionCache,
-      CrmReactor.AI.ConversationCache,
-      {DNSCluster, query: Application.get_env(:crm_reactor, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: CrmReactor.PubSub},
-      {Oban, Application.fetch_env!(:crm_reactor, Oban)},
-      CrmReactorWeb.Endpoint
-    ]
+    cache_listener =
+      if Application.get_env(:crm_reactor, :enable_cache_listener, true),
+        do: [{CrmReactor.CacheListener, []}],
+        else: []
+
+    children =
+      [
+        CrmReactor.PromEx,
+        CrmReactorWeb.Telemetry,
+        CrmReactor.Repo,
+        CrmReactor.Vault,
+        {Finch,
+         name: CrmReactor.Finch,
+         pools: %{
+           "https://api.mistral.ai" => [size: 50, count: 1],
+           :default => [size: 10]
+         }}
+      ] ++
+        cache_listener ++
+        [
+          CrmReactor.Tenants.TenantCache,
+          CrmReactor.AI.RegistryCache,
+          CrmReactor.AI.SubscriptionCache,
+          CrmReactor.AI.ConversationCache,
+          {DNSCluster, query: Application.get_env(:crm_reactor, :dns_cluster_query) || :ignore},
+          {Phoenix.PubSub, name: CrmReactor.PubSub},
+          {Oban, Application.fetch_env!(:crm_reactor, Oban)},
+          CrmReactorWeb.Endpoint
+        ]
 
     opts = [strategy: :one_for_one, name: CrmReactor.Supervisor]
     Supervisor.start_link(children, opts)

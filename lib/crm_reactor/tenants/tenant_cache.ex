@@ -48,9 +48,21 @@ defmodule CrmReactor.Tenants.TenantCache do
     end
   end
 
-  @doc "Reloads all mappings from the database (synchronous)."
+  @doc "Reloads all mappings from the database (synchronous) and notifies other replicas."
   def reload do
     GenServer.call(__MODULE__, :reload)
+    notify_replicas()
+  end
+
+  @doc "Reloads from DB without sending a NOTIFY (used by CacheListener to avoid loops)."
+  def reload_local do
+    GenServer.call(__MODULE__, :reload)
+  end
+
+  defp notify_replicas do
+    Repo.query("SELECT pg_notify('cache_reload', 'tenant_cache')")
+  rescue
+    _ -> :ok
   end
 
   # ── GenServer callbacks ───────────────────────────────────────────────────

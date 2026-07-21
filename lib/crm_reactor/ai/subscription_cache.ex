@@ -42,6 +42,15 @@ defmodule CrmReactor.AI.SubscriptionCache do
     GenServer.cast(__MODULE__, :reload)
   end
 
+  @doc """
+  Reloads from DB without sending a NOTIFY (used by CacheListener to avoid loops).
+  Note: reload/0 also doesn't notify — only set/3 does. This exists for API
+  symmetry with TenantCache.reload_local/0.
+  """
+  def reload_local do
+    GenServer.cast(__MODULE__, :reload)
+  end
+
   # ── GenServer callbacks ───────────────────────────────────────────────────
 
   @impl true
@@ -68,6 +77,7 @@ defmodule CrmReactor.AI.SubscriptionCache do
     case result do
       {:ok, _} ->
         :ets.insert(state.table, {{tenant_id, workflow_name}, enabled})
+        notify_replicas()
         {:reply, :ok, state}
 
       {:error, _} = err ->
@@ -79,6 +89,12 @@ defmodule CrmReactor.AI.SubscriptionCache do
   def handle_cast(:reload, state) do
     load(state.table)
     {:noreply, state}
+  end
+
+  defp notify_replicas do
+    Repo.query("SELECT pg_notify('cache_reload', 'subscription_cache')")
+  rescue
+    _ -> :ok
   end
 
   # ── Private ───────────────────────────────────────────────────────────────
