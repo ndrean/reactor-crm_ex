@@ -76,7 +76,7 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
-  config :crm_reactor, Sample.Mailer,
+  config :crm_reactor, CrmReactor.Mailer,
     adapter: Swoosh.Adapters.Mailjet,
     api_key: read_secret.("mailjet_api_key", "MAILJET_API_KEY", nil),
     secret: read_secret.("mailjet_secret_key", "MAILJET_SECRET_KEY", nil)
