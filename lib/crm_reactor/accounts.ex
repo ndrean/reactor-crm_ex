@@ -1,6 +1,8 @@
 defmodule CrmReactor.Accounts do
   @moduledoc "Context for account management: login, sessions, invites."
 
+  require Logger
+
   import Ecto.Query
 
   alias CrmReactor.Accounts.{Account, AccountToken}
@@ -174,7 +176,13 @@ defmodule CrmReactor.Accounts do
     email =
       InviteEmail.build(account.email, account.name, invite_url, calendar_url, onboard_url)
 
-    Mailer.deliver(email)
+    case Mailer.deliver(email) do
+      {:ok, _} ->
+        Logger.info("Invite email sent to #{account.email}")
+
+      {:error, reason} ->
+        Logger.error("Failed to send invite email to #{account.email}: #{inspect(reason)}")
+    end
 
     {:ok, encoded_token}
   end
