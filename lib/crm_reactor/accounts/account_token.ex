@@ -9,6 +9,7 @@ defmodule CrmReactor.Accounts.AccountToken do
   @invite_validity_in_hours 24
   @magic_link_validity_in_minutes 15
   @calendar_validity_in_days 365
+  @onboard_validity_in_days 7
 
   schema "account_tokens" do
     field :token, :binary
@@ -95,6 +96,35 @@ defmodule CrmReactor.Accounts.AccountToken do
             where: t.inserted_at > ago(@calendar_validity_in_days, "day"),
             join: a in assoc(t, :account),
             where: is_nil(a.suspended_at),
+            select: a
+
+        {:ok, query}
+
+      :error ->
+        :error
+    end
+  end
+
+  def build_onboard_token(account) do
+    token = :crypto.strong_rand_bytes(@rand_size)
+
+    {Base.url_encode64(token, padding: false),
+     %__MODULE__{
+       token: token,
+       context: "onboard",
+       sent_to: account.email,
+       account_id: account.id
+     }}
+  end
+
+  def verify_onboard_token_query(encoded_token) do
+    case Base.url_decode64(encoded_token, padding: false) do
+      {:ok, token} ->
+        query =
+          from t in __MODULE__,
+            where: t.token == ^token and t.context == "onboard",
+            where: t.inserted_at > ago(@onboard_validity_in_days, "day"),
+            join: a in assoc(t, :account),
             select: a
 
         {:ok, query}

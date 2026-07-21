@@ -25,6 +25,7 @@ config :crm_reactor,
     if(System.get_env("WHISPER_PROVIDER") == "mistral", do: :mistral, else: :local),
   telegram_bot_token: telegram_bot_token,
   telegram_secret_token: read_secret.("telegram_secret_token", "TELEGRAM_SECRET_TOKEN", nil),
+  email_webhook_secret: read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil),
   admin_token:
     if(config_env() == :prod,
       do:
@@ -71,6 +72,11 @@ if config_env() == :prod do
       """
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
+
+  config :crm_reactor, Sample.Mailer,
+    adapter: Swoosh.Adapters.Mailjet,
+    api_key: System.get_env("MAILJET_API_KEY"),
+    secret: System.get_env("MAILJET_SECRET_KEY")
 
   config :crm_reactor, CrmReactor.Repo,
     url: database_url,

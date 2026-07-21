@@ -48,13 +48,17 @@ services:
       restart_policy:
         condition: none
 
+  # NOTE: PHX_HOST and SITE_ADDRESS must both be set to the same production domain
+  # (e.g., crm.example.com). PHX_HOST is used by Phoenix for URL generation,
+  # SITE_ADDRESS is used by Caddy for TLS cert provisioning.
+  # With replicas > 1, endpoint_mode: dnsrr is required for Caddy sticky sessions.
   app:
     image: ${CRM_IMAGE:-crm_reactor:latest}
     environment:
       PHX_SERVER: "true"
       PHX_HOST: ${PHX_HOST:-localhost}
       PORT: "4000"
-      POOL_SIZE: "35"
+      POOL_SIZE: "20"
       RELEASE_DISTRIBUTION: none
       MISTRAL_MODEL_SMALL: ${MISTRAL_MODEL_SMALL:-mistral-small-latest}
       MISTRAL_MODEL_LARGE: ${MISTRAL_MODEL_LARGE:-mistral-medium-latest}
@@ -70,6 +74,7 @@ services:
       - admin_token
       - telegram_bot_token
       - telegram_secret_token
+      - email_webhook_secret
     networks:
       - frontend
       - backend
@@ -80,13 +85,14 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
-    stop_grace_period: 5s
+    stop_grace_period: 15s
     ulimits:
       nofile:
         soft: 65535
         hard: 65535
     deploy:
-      replicas: 1
+      replicas: 2
+      endpoint_mode: dnsrr
       resources:
         limits:
           memory: 1G
@@ -182,6 +188,8 @@ secrets:
   telegram_bot_token:
     external: true
   telegram_secret_token:
+    external: true
+  email_webhook_secret:
     external: true
   postgres_user:
     external: true

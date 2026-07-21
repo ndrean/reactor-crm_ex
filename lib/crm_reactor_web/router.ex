@@ -65,6 +65,15 @@ defmodule CrmReactorWeb.Router do
     post "/invite/:token", InviteController, :accept
   end
 
+  # Public: Telegram onboarding (no auth required)
+  scope "/", CrmReactorWeb do
+    pipe_through :browser
+
+    live_session :onboard do
+      live "/onboard/:token", OnboardLive, :index
+    end
+  end
+
   # Bootstrap: first-time admin setup (public, rate-limited)
   scope "/", CrmReactorWeb do
     pipe_through [:browser, :login_rate_limited]
@@ -107,6 +116,7 @@ defmodule CrmReactorWeb.Router do
       live "/subscriptions", AdminLive.Subscriptions, :index
       live "/setup", AdminLive.TelegramSetup, :index
       live "/system", AdminLive.System, :index
+      live "/incoming-emails", AdminLive.IncomingEmails, :index
     end
   end
 
@@ -147,6 +157,7 @@ defmodule CrmReactorWeb.Router do
     pipe_through [:api, :rate_limited]
 
     post "/telegram", WebhookController, :telegram
+    post "/email", InboundEmailController, :create
   end
 
   scope "/", CrmReactorWeb do

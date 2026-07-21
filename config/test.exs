@@ -34,8 +34,11 @@ config :swoosh, :api_client, false
 
 config :crm_reactor,
   classifier: CrmReactor.AI.MockClassifier,
-  admin_token: "dev-admin-token"
+  admin_token: "dev-admin-token",
+  email_webhook_secret: "test-email-secret"
 
 config :bcrypt_elixir, log_rounds: 1
 
 config :crm_reactor, CrmReactor.PromEx, disabled: true
+
+config :crm_reactor, enable_cache_listener: false

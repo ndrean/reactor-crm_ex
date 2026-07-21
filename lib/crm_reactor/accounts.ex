@@ -80,6 +80,21 @@ defmodule CrmReactor.Accounts do
     :ok
   end
 
+  # ── Onboard tokens ──────────────────────────────────────────────────────────
+
+  def generate_onboard_token(account) do
+    {encoded_token, token_struct} = AccountToken.build_onboard_token(account)
+    Repo.insert!(token_struct)
+    {:ok, encoded_token}
+  end
+
+  def get_account_by_onboard_token(encoded_token) do
+    case AccountToken.verify_onboard_token_query(encoded_token) do
+      {:ok, query} -> Repo.one(query)
+      :error -> nil
+    end
+  end
+
   # ── Cross-channel tenant validation ────────────────────────────────────────
 
   @doc """
@@ -148,7 +163,17 @@ defmodule CrmReactor.Accounts do
 
     invite_url = "#{base_url}/invite/#{encoded_token}"
 
-    email = InviteEmail.build(account.email, account.name, invite_url)
+    # Generate onboard token for Telegram linking
+    {:ok, onboard_token} = generate_onboard_token(account)
+    onboard_url = "#{base_url}/onboard/#{onboard_token}"
+
+    # Get or create calendar token
+    {:ok, calendar_token} = get_or_create_calendar_token(account)
+    calendar_url = "#{base_url}/cal/#{calendar_token}"
+
+    email =
+      InviteEmail.build(account.email, account.name, invite_url, calendar_url, onboard_url)
+
     Mailer.deliver(email)
 
     {:ok, encoded_token}
