@@ -11,12 +11,17 @@ defmodule CrmReactorWeb.AdminLive.Users do
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(page_title: "Users", tenants: [], users_without_telegram: [])
+      |> assign(
+        page_title: "Users",
+        tenants: [],
+        users_without_telegram: [],
+        filter_tenant: nil
+      )
       |> stream(:users, [])
 
     if connected?(socket) do
-      users = Accounts.list_all_users()
       tenants = Repo.all(from(t in Tenant, select: t.tenant_id, order_by: t.tenant_id))
+      users = Accounts.list_all_users()
 
       users_without_telegram =
         users
@@ -77,6 +82,15 @@ defmodule CrmReactorWeb.AdminLive.Users do
     </.admin_form>
 
     <h2 style="margin-top:24px;font-size:1.1rem;font-weight:600;">All Users</h2>
+
+    <form phx-change="filter" style="margin-bottom:16px;">
+      <label style="font-size:0.8rem;font-weight:500;margin-right:8px;">Tenant</label>
+      <select name="tenant" style="padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:0.875rem;">
+        <option value="">All tenants</option>
+        <option :for={tid <- @tenants} value={tid} selected={@filter_tenant == tid}><%= tid %></option>
+      </select>
+    </form>
+
     <.admin_table id="users" rows={@streams.users} cols={["Email", "Name", "Tenant", "Telegram", "Status", "Actions"]}>
       <:col :let={{_id, user}}>
         <td style="padding:10px 16px;font-size:0.875rem;font-weight:500;"><%= user.email %></td>
@@ -154,6 +168,16 @@ defmodule CrmReactorWeb.AdminLive.Users do
   # ── Events ──────────────────────────────────────────────────────────────
 
   @impl true
+  def handle_event("filter", %{"tenant" => tenant}, socket) do
+    tenant = if tenant == "", do: nil, else: tenant
+    users = Accounts.list_all_users(tenant)
+
+    {:noreply,
+     socket
+     |> assign(filter_tenant: tenant)
+     |> stream(:users, users, reset: true)}
+  end
+
   def handle_event(
         "create_account",
         %{"email" => email, "name" => name, "tenant_id" => tid},

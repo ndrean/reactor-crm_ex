@@ -384,25 +384,32 @@ defmodule CrmReactor.Accounts do
   def get_account_by_email(email), do: Repo.get_by(Account, email: email)
   def get_user_mapping!(id), do: Repo.get!(UserMapping, id)
 
-  def list_all_users do
-    from(m in UserMapping,
-      left_join: a in Account,
-      on: a.email == m.email and a.tenant_id == m.tenant_id,
-      order_by: [asc: m.tenant_id, asc: m.email],
-      select: %{
-        id: m.id,
-        email: m.email,
-        tenant_id: m.tenant_id,
-        telegram_id: m.telegram_id,
-        status: m.status,
-        name: a.name,
-        has_account: not is_nil(a.id),
-        account_id: a.id,
-        confirmed_at: a.confirmed_at,
-        account_created_at: a.inserted_at
-      }
-    )
-    |> Repo.all()
+  def list_all_users(tenant_filter \\ nil) do
+    query =
+      from(m in UserMapping,
+        left_join: a in Account,
+        on: a.email == m.email and a.tenant_id == m.tenant_id,
+        order_by: [asc: m.tenant_id, asc: m.email],
+        select: %{
+          id: m.id,
+          email: m.email,
+          tenant_id: m.tenant_id,
+          telegram_id: m.telegram_id,
+          status: m.status,
+          name: a.name,
+          has_account: not is_nil(a.id),
+          account_id: a.id,
+          confirmed_at: a.confirmed_at,
+          account_created_at: a.inserted_at
+        }
+      )
+
+    query =
+      if tenant_filter,
+        do: where(query, [m], m.tenant_id == ^tenant_filter),
+        else: query
+
+    Repo.all(query)
   end
 
   def list_user_accounts do
