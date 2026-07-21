@@ -34,7 +34,10 @@ config :crm_reactor,
       else: read_secret.("admin_token", "ADMIN_TOKEN", "dev-admin-token")
     ),
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads"),
-  bootstrap_token: read_secret.("bootstrap_token", "BOOTSTRAP_TOKEN", nil)
+  bootstrap_token: read_secret.("bootstrap_token", "BOOTSTRAP_TOKEN", nil),
+  mailer_from:
+    {System.get_env("MAILER_FROM_NAME", "CRM Reactor"),
+     System.get_env("MAILER_FROM_EMAIL", "noreply@crm-reactor.app")}
 
 config :telegex, token: telegram_bot_token
 
