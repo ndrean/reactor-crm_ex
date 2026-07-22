@@ -123,6 +123,180 @@ Emails sent to `admin@yourdomain.com` arrive via Cloudflare Email Worker → `/w
 
 Each tenant can have an outbound webhook URL set in `/admin/tenants`. When configured, the app POSTs an HMAC-signed payload to that URL after every completed action — for integrating with external systems. This is unrelated to the Telegram inbound webhook.
 
+## Cloudflare / Mailjet setup
+
+The domain is <nlex.uk> and the app is reached on the subdomain <reactor.nlex.uk>. The SMTP service is provided by Mailjet.
+
+### Domain Setup (nlex.uk)
+
+**In Cloudflare DNS**: 
+Ensure nlex.uk uses Cloudflare nameservers (it already does). No manual MX/SPF/DKIM records needed yet — Email Routing will create them.
+
+**In Email Routing**:
+
+- Go to Compute → Email Service → Email Routing
+- Click Onboard Domain → Select nlex.uk
+- Cloudflare auto-adds to DNS:
+
+  - 3× MX records (route1/2/3.mx.cloudflare.net)
+  - 1× SPF TXT record: v=spf1 include:_spf.mx.cloudflare.net ~all
+  - 1× DKIM TXT record: cf2024-1._domainkey.nlex.uk
+  
+These records are Locked — managed by Email Service. Do not edit them directly.
+
+**In Mailjet (for sending)**: 
+
+- Add nlex.uk as a sender domain in Mailjet.
+- Mailjet gives you a verification TXT record (e.g., mailjet._xxxxxx)
+- In Cloudflare DNS, add it as a custom TXT record (unlocked, manually managed)
+- Mailjet also gives a DKIM record (mailjet._domainkey) — add it manually too
+- Merge SPF: Unlock the Email Routing SPF record and edit it to: "v=spf1 include:_spf.mx.cloudflare.net include:spf.mailjet.com ~all".
+- Then re-lock it, OR add a second SPF record (not recommended — only one SPF should exist).
+
+### Subdomain Setup (reactor.nlex.uk)
+
+Critical distinction:
+➡ Email Sending (outbound): Treats subdomains as separate domains. You onboard reactor.nlex.uk separately.
+➡ Email Routing (inbound): Add subdomains via Settings > Subdomains inside the parent domain.
+
+**In Email Routing**: 
+
+- Select nlex.uk in Email Routing
+- Go to Settings tab
+- Under Subdomains, type reactor and submit. Cloudflare auto-adds to DNS:
+
+  - 3× MX records for reactor.nlex.uk
+  - 1× SPF TXT for reactor.nlex.uk
+  - 1× DKIM TXT for cf2024-1._domainkey.reactor.nlex.uk
+
+**In Mailjet** (for sending from subdomain):
+
+- Add reactor.nlex.uk as a new, separate domain in Mailjet.
+- Add Mailjet's verification TXT to DNS: Name = mailjet._xxxxx.reactor
+- Add Mailjet's DKIM to DNS: Name = mailjet._domainkey.reactor
+- Merge SPF on the subdomain to include both Cloudflare and Mailjet:
+v=spf1 include:_spf.mx.cloudflare.net include:spf.mailjet.com ~all
+
+**Email Addresses / Routing Rules**:
+
+📫 Receiving emails (inbound)
+For each address you want to receive at, create a Routing Rule:
+
+Custom address	Action
+admin@reactor.nlex.uk	Forward to your-gmail@gmail.com
+*@nlex.uk (catch-all)	Forward to your-gmail@gmail.com
+Important: Destination addresses must be verified first in Email Service settings.
+
+📤 Sending emails (outbound)
+Use Mailjet's SMTP/API with the verified domains:
+
+admin@reactor.nlex.uk → via Mailjet
+
+**Worker Triggered on Incoming Mail (to VPS)**:
+
+Route emails to a Worker that processes them and sends to the VPS via an http-POST request.
+
+### Create the Worker
+
+Setup:
+
+1. Create a Worker in Cloudflare dashboard (named _email-forwarder_ here)
+2. Paste the `postal-mime` ESM library (link below) into a new file "postal-mime.js"
+3. Paste this code into "index.js"
+4. Add environment variable: EMAIL_WEBHOOK_SECRET (same value as on the VPS)
+5. In Email Routing, route admin@reactor.nlex.uk to this worker
+
+```js
+
+
+// copy https://cdn.jsdelivr.net/npm/postal-mime@2.7.5/+esm into ./portal-mime.js
+
+
+import PostalMime from "./postal-mime.js";
+
+export default {
+  async email(message, env, ctx) {
+    const rawEmail = await new Response(message.raw).arrayBuffer()
+    
+    // Tell postal-mime to output attachments as Base64 strings:
+    const parsed = await PostalMime.parse(rawEmail, {
+      attachmentEncoding: "base64"
+    });
+
+    // Map attachments into a clean array for JSON
+    const attachments = (parsed.attachments || []).map((att) => ({
+      filename: att.filename || "file",
+      mimeType: att.mimeType,
+      content: att.content // Now a Base64 string!
+    }));
+
+    const resp = await fetch("https://reactor.nlex.uk/webhook/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-email-secret": env.EMAIL_WEBHOOK_SECRET,
+      },
+      body: JSON.stringify({
+        from: message.from,
+        subject: message.headers.get("subject") || parsed.subject || "",
+        body: parsed.text || parsed.html || "",
+        attachments: attachments,
+      }),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`Webhook rejected: ${resp.status} ${resp.statusText}`);
+    }
+  },
+};
+```
+
+**Wire the Worker to Email Routing**:
+
+- In Email Routing → Routing Rules, add a rule:
+  Custom address: admin@reactor.nlex.uk (or *@reactor.nlex.uk)
+- Action: Send to a Worker → Select your Worker
+
+Key constraints (as of July 2025):
+
+- Incoming emails must have valid SPF or DKIM authentication, or the Worker won't be triggered
+- Workers on the Free plan have CPU/memory limits — complex parsing may exceed them
+- Use `postal-mime` npm package to parse raw emails inside the Worker (?)
+
+| Record |What it says |
+| -- | -- |
+| SPF | "Only these servers (Mailjet) may send email for reactor.nlex.uk." |
+| DKIM |"Here is the public key to verify cryptographic signatures on email from reactor.nlex.uk." |
+| DMARC | "If an email from reactor.nlex.uk fails both SPF and DKIM checks, take this action (currently: monitor and report with the settings `p=none rua=mailto:admin@somewhere.com`)."|
+
+```mermaid
+---
+config:
+  layout: elk
+---
+graph TD
+    User[user]
+    CloudflareRouting[Cloudflare Email Routing MX<br/>auto-managed DNS]
+    RoutingRules[Routing Rules]
+    SendWorker[Send to Worker]
+    VPS[VPS / App]
+    
+    User-->|SMTP Sending| CloudflareRouting
+    CloudflareRouting --> RoutingRules
+    RoutingRules --> SendWorker
+    SendWorker -->|http-POST| VPS
+    
+    classDef smtp-sending fill:#f0fdf4,stroke:#4ade80
+    classDef receiving fill:#f0f9ff,stroke:#38bdf8
+    classDef destination fill:#fff7ed,stroke:#fb923c
+    
+    class User smtp-sending
+    class CloudflareRouting,RoutingRules receiving
+    class SendWorker,VPS destination
+```
+
+
+
 ## Design philosophy
 
 Small cloud LLMs, structured outputs, no generated SQL: the LLM picks from a known action set — it never writes free-form code or queries.
@@ -1152,3 +1326,5 @@ priv/
 ### Model pricing
 
 LLM cost tracking is driven by `priv/ai/model_pricing.json` (loaded at compile time via `CrmReactor.AI.ModelPricing`). Each model entry specifies pricing per million tokens and a role (`primary`, `escalation`, `pass1`, `vision`, `review`). The `DataExport` module uses this config to estimate monthly costs in usage reports.
+
+
