@@ -25,7 +25,13 @@ config :crm_reactor,
     if(System.get_env("WHISPER_PROVIDER") == "mistral", do: :mistral, else: :local),
   telegram_bot_token: telegram_bot_token,
   telegram_secret_token: read_secret.("telegram_secret_token", "TELEGRAM_SECRET_TOKEN", nil),
-  email_webhook_secret: read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil),
+  email_webhook_secret:
+    if(config_env() == :prod,
+      do:
+        read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil) ||
+          raise("EMAIL_WEBHOOK_SECRET secret or env var is required in prod"),
+      else: read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil)
+    ),
   admin_token:
     if(config_env() == :prod,
       do:
@@ -76,10 +82,18 @@ if config_env() == :prod do
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
+  mailjet_api_key =
+    read_secret.("mailjet_api_key", "MAILJET_API_KEY", nil) ||
+      raise("MAILJET_API_KEY secret or env var is required in prod")
+
+  mailjet_secret_key =
+    read_secret.("mailjet_secret_key", "MAILJET_SECRET_KEY", nil) ||
+      raise("MAILJET_SECRET_KEY secret or env var is required in prod")
+
   config :crm_reactor, CrmReactor.Mailer,
     adapter: Swoosh.Adapters.Mailjet,
-    api_key: read_secret.("mailjet_api_key", "MAILJET_API_KEY", nil),
-    secret: read_secret.("mailjet_secret_key", "MAILJET_SECRET_KEY", nil)
+    api_key: mailjet_api_key,
+    secret: mailjet_secret_key
 
   config :swoosh, :api_client, Swoosh.ApiClient.Req
 

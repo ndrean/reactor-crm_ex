@@ -86,8 +86,11 @@ defmodule CrmReactor.Accounts do
 
   def generate_onboard_token(account) do
     {encoded_token, token_struct} = AccountToken.build_onboard_token(account)
-    Repo.insert!(token_struct)
-    {:ok, encoded_token}
+
+    case Repo.insert(token_struct) do
+      {:ok, _} -> {:ok, encoded_token}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   def get_account_by_onboard_token(encoded_token) do
@@ -95,6 +98,13 @@ defmodule CrmReactor.Accounts do
       {:ok, query} -> Repo.one(query)
       :error -> nil
     end
+  end
+
+  def delete_onboard_tokens(%Account{} = account) do
+    from(t in AccountToken,
+      where: t.account_id == ^account.id and t.context == "onboard"
+    )
+    |> Repo.delete_all()
   end
 
   # ── Cross-channel tenant validation ────────────────────────────────────────
@@ -160,31 +170,27 @@ defmodule CrmReactor.Accounts do
   # ── Invite flow ────────────────────────────────────────────────────────────
 
   def deliver_invite_email(account, base_url) do
-    {encoded_token, token_struct} = AccountToken.build_invite_token(account)
-    Repo.insert!(token_struct)
+    with {encoded_token, token_struct} <- AccountToken.build_invite_token(account),
+         {:ok, _} <- Repo.insert(token_struct),
+         {:ok, onboard_token} <- generate_onboard_token(account),
+         {:ok, calendar_token} <- get_or_create_calendar_token(account) do
+      invite_url = "#{base_url}/invite/#{encoded_token}"
+      onboard_url = "#{base_url}/onboard/#{onboard_token}"
+      calendar_url = "#{base_url}/cal/#{calendar_token}"
 
-    invite_url = "#{base_url}/invite/#{encoded_token}"
+      email =
+        InviteEmail.build(account.email, account.name, invite_url, calendar_url, onboard_url)
 
-    # Generate onboard token for Telegram linking
-    {:ok, onboard_token} = generate_onboard_token(account)
-    onboard_url = "#{base_url}/onboard/#{onboard_token}"
+      case Mailer.deliver(email) do
+        {:ok, _} ->
+          Logger.info("Invite email sent from #{elem(email.from, 1)} to #{account.email}")
 
-    # Get or create calendar token
-    {:ok, calendar_token} = get_or_create_calendar_token(account)
-    calendar_url = "#{base_url}/cal/#{calendar_token}"
+        {:error, reason} ->
+          Logger.error("Failed to send invite email to #{account.email}: #{inspect(reason)}")
+      end
 
-    email =
-      InviteEmail.build(account.email, account.name, invite_url, calendar_url, onboard_url)
-
-    case Mailer.deliver(email) do
-      {:ok, _} ->
-        Logger.info("Invite email sent from #{elem(email.from, 1)} to #{account.email}")
-
-      {:error, reason} ->
-        Logger.error("Failed to send invite email to #{account.email}: #{inspect(reason)}")
+      {:ok, encoded_token}
     end
-
-    {:ok, encoded_token}
   end
 
   def accept_invite(token, password) when is_binary(password) do

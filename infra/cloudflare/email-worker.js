@@ -13,7 +13,7 @@ export default {
     // Extract plain text body from multipart email
     const body = extractPlainText(raw);
 
-    await fetch("https://reactor.nlex.uk/webhook/email", {
+    const resp = await fetch("https://reactor.nlex.uk/webhook/email", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -25,6 +25,10 @@ export default {
         body: body,
       }),
     });
+
+    if (!resp.ok) {
+      throw new Error(`Webhook rejected: ${resp.status} ${resp.statusText}`);
+    }
   },
 };
 

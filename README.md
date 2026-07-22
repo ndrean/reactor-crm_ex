@@ -13,7 +13,7 @@ Requirements: a Debian/Ubuntu server with `git`, `docker`, and `docker compose`.
 
 The stack runs on Docker Swarm with **host-level Caddy** for TLS and reverse proxying:
 
-```
+```txt
 Internet → Cloudflare DNS → VPS:443 (Caddy on host)
                               ├─ reactor.nlex.uk → localhost:4000 (app)
                               ├─ reactor.nlex.uk/grafana → localhost:3000 (grafana)
@@ -31,41 +31,16 @@ sudo apt install caddy
 sudo systemctl enable caddy
 ```
 
-Configure `/etc/caddy/Caddyfile`:
+The deploy Caddyfile is `Caddyfile.deploy` in the repo root. Transfer it to the VPS:
 
-```
-reactor.nlex.uk {
-    handle /grafana* {
-        reverse_proxy localhost:3000
-    }
-
-    handle /live* {
-        reverse_proxy localhost:4000 {
-            lb_policy cookie
-            health_uri /api/health
-            health_interval 10s
-            transport http {
-                keepalive 30s
-            }
-        }
-    }
-
-    handle {
-        reverse_proxy localhost:4000 {
-            lb_policy cookie
-            health_uri /api/health
-            health_interval 10s
-            transport http {
-                keepalive 30s
-            }
-        }
-    }
-}
+```bash
+scp Caddyfile.deploy user@vps:/tmp/Caddyfile
+ssh user@vps 'sudo cp /tmp/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy'
 ```
 
-Then reload: `sudo systemctl reload caddy`
+Caddy handles automatic TLS via Let's Encrypt. Grafana is not exposed directly — it is only accessible through Caddy at `https://reactor.nlex.uk/grafana` (login: `admin` / password from `GF_SECURITY_ADMIN_PASSWORD`).
 
-To add a second app later, just add another block to the Caddyfile.
+To add a second app later, just add another block to `Caddyfile.deploy` and re-deploy.
 
 ### 2. Configure `.env-docker`
 

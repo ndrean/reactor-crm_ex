@@ -125,6 +125,7 @@ defmodule CrmReactor.Accounts.AccountToken do
             where: t.token == ^token and t.context == "onboard",
             where: t.inserted_at > ago(@onboard_validity_in_days, "day"),
             join: a in assoc(t, :account),
+            where: is_nil(a.suspended_at),
             select: a
 
         {:ok, query}

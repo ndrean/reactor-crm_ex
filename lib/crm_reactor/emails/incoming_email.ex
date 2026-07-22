@@ -29,7 +29,7 @@ defmodule CrmReactor.Emails.IncomingEmail do
         changeset
 
       text when byte_size(text) > @max_body_bytes ->
-        put_change(changeset, :body_text, binary_part(text, 0, @max_body_bytes))
+        put_change(changeset, :body_text, String.slice(text, 0, @max_body_bytes))
 
       _ ->
         changeset

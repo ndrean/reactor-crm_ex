@@ -40,6 +40,8 @@ defmodule CrmReactorWeb.OnboardLive do
     if changeset.valid? do
       case Accounts.link_telegram(account.email, account.tenant_id, chat_id) do
         {:ok, _} ->
+          Accounts.delete_onboard_tokens(account)
+
           {:noreply,
            socket
            |> assign(linked: true)
