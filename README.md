@@ -9,19 +9,65 @@ Uses **Reactor** for workflow orchestration, **Oban** for durable job processing
 
 Requirements: a Debian/Ubuntu server with `git`, `docker`, and `docker compose`.
 
-```bash
-git clone <your-repo-url> && cd crm_reactor
-cp .env.example .env-docker   # edit with your values
-docker compose up -d --build
+### Architecture
+
+The stack runs on Docker Swarm with **host-level Caddy** for TLS and reverse proxying:
+
+```
+Internet → Cloudflare DNS → VPS:443 (Caddy on host)
+                              ├─ reactor.nlex.uk → localhost:4000 (app)
+                              ├─ reactor.nlex.uk/grafana → localhost:3000 (grafana)
+                              └─ other.nlex.uk → localhost:XXXX (future apps)
 ```
 
-The `migrate` service runs automatically before the app starts — it runs migrations and creates the admin account from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in your `.env-docker`.
+Caddy runs on the host (not in Docker) so it can serve multiple apps across different Docker stacks. TLS certificates are auto-provisioned via Let's Encrypt.
 
-The stack includes: **Postgres**, the **app** (Elixir release), **Caddy** (auto-HTTPS reverse proxy), **Prometheus** and **Grafana** (monitoring).
+### 1. Install Caddy on the host
 
-Set `SITE_ADDRESS=yourdomain.com` in `.env-docker` for Caddy to auto-provision TLS.
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudflare.com/caddy/stable/deb/debian/setup.deb.sh' | sudo bash
+sudo apt install caddy
+sudo systemctl enable caddy
+```
 
-### 1. Configure `.env-docker`
+Configure `/etc/caddy/Caddyfile`:
+
+```
+reactor.nlex.uk {
+    handle /grafana* {
+        reverse_proxy localhost:3000
+    }
+
+    handle /live* {
+        reverse_proxy localhost:4000 {
+            lb_policy cookie
+            health_uri /api/health
+            health_interval 10s
+            transport http {
+                keepalive 30s
+            }
+        }
+    }
+
+    handle {
+        reverse_proxy localhost:4000 {
+            lb_policy cookie
+            health_uri /api/health
+            health_interval 10s
+            transport http {
+                keepalive 30s
+            }
+        }
+    }
+}
+```
+
+Then reload: `sudo systemctl reload caddy`
+
+To add a second app later, just add another block to the Caddyfile.
+
+### 2. Configure `.env-docker`
 
 Copy `.env.example` and fill in the required values:
 
@@ -33,18 +79,50 @@ Copy `.env.example` and fill in the required values:
 | `CLOAK_KEY` | yes | `openssl rand -base64 32` — persist across deploys or encrypted data is lost |
 | `ADMIN_EMAIL` | yes | Admin login email (created on first `migrate`) |
 | `ADMIN_PASSWORD` | yes | Admin login password |
-| `SITE_ADDRESS` | yes | Your domain (e.g. `crm.example.com`) — Caddy auto-provisions HTTPS |
+| `PHX_HOST` | yes | Your domain (e.g. `reactor.nlex.uk`) |
+| `MAILER_FROM_EMAIL` | yes | Verified sender address (e.g. `admin@reactor.nlex.uk`) |
+| `MAILJET_API_KEY` | yes | Mailjet API key for outbound emails |
+| `MAILJET_SECRET_KEY` | yes | Mailjet secret key |
+| `EMAIL_WEBHOOK_SECRET` | yes | Shared secret for inbound email webhook |
 | `TELEGRAM_BOT_TOKEN` | for Telegram | Token from @BotFather |
 | `TELEGRAM_SECRET_TOKEN` | for Telegram | Any random string, verified on each webhook request |
 | `ADMIN_TOKEN` | optional | Bearer token for the `/api/admin/*` REST endpoints |
+| `GF_SECURITY_ADMIN_PASSWORD` | optional | Grafana admin password (defaults to `admin`) |
 
-### 2. Set up Telegram
-
-Create a bot via [@BotFather](https://t.me/BotFather) to get a bot token. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_SECRET_TOKEN` in `.env-docker`, then rebuild:
+### 3. Deploy
 
 ```bash
-docker compose up -d --build
+git clone <your-repo-url> && cd crm_reactor
+cp .env.example .env-docker   # edit with your values
+
+# First-time deploy
+set -a && source .env-docker && set +a
+./scripts/deploy.sh --build --secrets-from .env-docker --migrate
+
+# Subsequent deploys
+set -a && source .env-docker && set +a
+./scripts/deploy.sh --build --secrets-from .env-docker
 ```
+
+### 4. Firewall (UFW)
+
+```bash
+ufw allow ssh
+ufw allow 80/tcp     # Caddy ACME challenges
+ufw allow 443/tcp    # HTTPS
+ufw enable
+```
+
+### 5. DNS (Cloudflare)
+
+Add an A record pointing your subdomain to the VPS IP. For email:
+
+- **Outbound** (Mailjet): add SPF + DKIM TXT records per Mailjet instructions
+- **Inbound** (Cloudflare Email Routing): add MX records, create a Worker to POST to `/webhook/email`
+
+### 6. Set up Telegram
+
+Create a bot via [@BotFather](https://t.me/BotFather) to get a bot token. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_SECRET_TOKEN` in `.env-docker`, then rebuild.
 
 Register the webhook with Telegram (one-time):
 
@@ -54,15 +132,19 @@ curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
   -d secret_token="${TELEGRAM_SECRET_TOKEN}"
 ```
 
-### 3. Manage users
+### 7. Manage users
 
 Log in at `https://yourdomain.com/login` with your admin credentials.
 
-**Web users** — create accounts in `/admin/users`. The user receives an email with an invite link to set their password. Login is email + password.
+**Web users** — create accounts in `/admin/users`. The user receives an invite email with a password setup link, calendar feed URL, and Telegram onboarding link. Login is email + password (or magic link).
 
-**Telegram users** — the user sends any message to the bot and gives their chat ID to the admin. The admin adds the chat ID + user email as a "user mapping" in `/admin/users`, or uses `/admin/setup` to provision a new tenant + Telegram user in one step.
+**Telegram users** — the invite email includes a link to `/onboard/:token` where the user enters their Telegram chat ID (obtained from `@GetMyIDBot`). Alternatively, the admin can add the chat ID directly in `/admin/users`.
 
-### 4. Outbound webhooks (optional)
+### 8. Inbound email inbox
+
+Emails sent to `admin@yourdomain.com` arrive via Cloudflare Email Worker → `/webhook/email` and are viewable at `/admin/incoming-emails`. The admin can toggle status (pending/completed) and expand to read the body.
+
+### 9. Outbound webhooks (optional)
 
 Each tenant can have an outbound webhook URL set in `/admin/tenants`. When configured, the app POSTs an HMAC-signed payload to that URL after every completed action — for integrating with external systems. This is unrelated to the Telegram inbound webhook.
 
