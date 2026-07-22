@@ -211,7 +211,17 @@ defmodule CrmReactor.Accounts do
       )
       |> Repo.delete_all()
 
+      # Activate the user mapping
+      case Repo.get_by(UserMapping, email: account.email, tenant_id: account.tenant_id) do
+        nil -> :ok
+        mapping -> mapping |> UserMapping.changeset(%{status: "active"}) |> Repo.update!()
+      end
+
       updated
+    end)
+    |> tap(fn
+      {:ok, _} -> TenantCache.reload()
+      _ -> :ok
     end)
   end
 
