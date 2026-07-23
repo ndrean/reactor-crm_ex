@@ -17,6 +17,8 @@ The stack runs on Docker Swarm with **host-level Caddy** for TLS and reverse pro
 Internet → Cloudflare DNS → VPS:443 (Caddy on host)
                               ├─ reactor.nlex.uk → localhost:4000 (app)
                               ├─ reactor.nlex.uk/grafana → localhost:3000 (grafana)
+                              ├─ minio.nlex.uk → localhost:9001 (MinIO console)
+                              ├─ s3.nlex.uk → localhost:9000 (MinIO S3 API, presigned URLs)
                               └─ other.nlex.uk → localhost:XXXX (future apps)
 ```
 
@@ -62,6 +64,9 @@ Copy `.env.example` and fill in the required values:
 | `TELEGRAM_BOT_TOKEN` | for Telegram | Token from @BotFather |
 | `TELEGRAM_SECRET_TOKEN` | for Telegram | Any random string, verified on each webhook request |
 | `ADMIN_TOKEN` | optional | Bearer token for the `/api/admin/*` REST endpoints |
+| `MINIO_ACCESS_KEY` | for S3 storage | MinIO root user (used as S3 access key) |
+| `MINIO_SECRET_KEY` | for S3 storage | MinIO root password (used as S3 secret key) |
+| `MINIO_PUBLIC_HOST` | for S3 storage | Public hostname for presigned URLs (e.g. `s3.nlex.uk`) |
 | `GF_SECURITY_ADMIN_PASSWORD` | optional | Grafana admin password (defaults to `admin`) |
 
 ### 3. Deploy
@@ -115,9 +120,59 @@ Log in at `https://yourdomain.com/login` with your admin credentials.
 
 **Telegram users** — the invite email includes a link to `/onboard/:token` where the user enters their Telegram chat ID (obtained from `@GetMyIDBot`). Alternatively, the admin can add the chat ID directly in `/admin/users`.
 
-### 8. Inbound email inbox
+### 8. Object storage (MinIO)
 
-Emails sent to `admin@yourdomain.com` arrive via Cloudflare Email Worker → `/webhook/email` and are viewable at `/admin/incoming-emails`. The admin can toggle status (pending/completed) and expand to read the body.
+Email attachments and file uploads are stored in an S3-compatible object store. The default deployment uses **MinIO** (included in the Docker stack).
+
+MinIO exposes two separate servers:
+
+- **Port 9000** — the S3-compatible API. The app uses this internally (via `minio:9000` inside Docker) for storing and retrieving files. It also needs to be publicly reachable so that presigned download URLs work from the browser.
+- **Port 9001** — the web console. A management UI for browsing buckets, viewing files, and managing access keys.
+
+Each gets its own subdomain since they serve different purposes:
+
+**DNS records** (Cloudflare, "DNS only"):
+
+| Record | Value | Purpose |
+|--------|-------|---------|
+| `minio.yourdomain.com` | VPS IP | MinIO web console |
+| `s3.yourdomain.com` | VPS IP | MinIO S3 API (presigned download URLs) |
+
+**Caddy** (add to `/etc/caddy/Caddyfile`):
+
+```
+minio.yourdomain.com {
+    reverse_proxy localhost:9001
+}
+
+s3.yourdomain.com {
+    reverse_proxy localhost:9000
+}
+```
+
+**Environment** (`.env-docker`):
+
+```
+MINIO_ACCESS_KEY=your_access_key
+MINIO_SECRET_KEY=your_secret_key
+MINIO_PUBLIC_HOST=s3.yourdomain.com
+FILE_STORAGE_BACKEND=s3
+```
+
+The `minio-init` service in the stack automatically creates the `crm-reactor` bucket on first deploy. MinIO console is accessible at `https://minio.yourdomain.com`. Attachment downloads in `/admin/incoming-emails` use time-limited presigned URLs via `s3.yourdomain.com`.
+
+**Switching to AWS S3 or Backblaze B2** — the app uses `ExAws.S3` and can target any S3-compatible provider:
+
+1. Remove the `minio` and `minio-init` services from `docker-stack.yml`
+2. Remove the `minio.yourdomain.com` and `s3.yourdomain.com` DNS/Caddy entries
+3. Update `runtime.exs` `ex_aws_config` with your provider's endpoint, region, and credentials
+4. Unset `MINIO_PUBLIC_HOST` — presigned URLs will use the provider's public endpoint directly
+
+No code changes required. The `Storage.S3` module and presigned URL generation work with any S3-compatible API.
+
+### 9. Inbound email inbox
+
+Emails sent to `admin@yourdomain.com` arrive via Cloudflare Email Worker → `/webhook/email` and are viewable at `/admin/incoming-emails`. Attachments are stored in object storage and downloadable via presigned links. The admin can toggle status (pending/completed) and expand to read the body.
 
 ### 9. Outbound webhooks (optional)
 
@@ -1237,6 +1292,7 @@ lib/
     storage.ex               # Storage behaviour (5MB guard)
     storage/
       local.ex               # Filesystem impl: priv/uploads/{tenant}/{uuid}-{filename}
+      s3.ex                  # S3-compatible impl (MinIO/B2/R2) with presigned URL support
     workers/
       appointment_reminder_worker.ex  # Oban: scheduled appointment reminders (Telegram / webhook)
       file_cleanup_worker.ex          # Oban cron (daily 3:30AM): delete expired stored files
