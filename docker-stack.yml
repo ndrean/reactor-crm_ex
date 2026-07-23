@@ -36,6 +36,7 @@ services:
     environment:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      FILE_STORAGE_BACKEND: local
     secrets:
       - database_url
       - secret_key_base
