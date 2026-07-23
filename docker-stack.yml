@@ -122,9 +122,12 @@ services:
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9001:9001"
     environment:
       MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      MINIO_BROWSER_REDIRECT_URL: https://reactor.nlex.uk/minio
     secrets:
       - minio_root_user
       - minio_root_password

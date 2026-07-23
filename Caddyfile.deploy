@@ -3,6 +3,10 @@ reactor.nlex.uk {
         reverse_proxy localhost:3000
     }
 
+    handle /minio* {
+        reverse_proxy localhost:9001
+    }
+
     handle /live* {
         reverse_proxy localhost:4000 {
             lb_policy cookie
