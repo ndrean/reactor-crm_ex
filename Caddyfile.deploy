@@ -26,3 +26,7 @@ reactor.nlex.uk {
         }
     }
 }
+
+minio.nlex.uk {
+    reverse_proxy localhost:9001
+}
