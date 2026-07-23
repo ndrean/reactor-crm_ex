@@ -15,6 +15,11 @@ defmodule CrmReactor.Storage do
 
   @callback delete(storage_key :: String.t()) :: :ok | {:error, term()}
 
+  @callback presigned_url(storage_key :: String.t(), opts :: keyword()) ::
+              {:ok, String.t()} | {:error, term()}
+
+  @optional_callbacks [presigned_url: 2]
+
   def put(_tenant_schema, _filename, content) when byte_size(content) > @max_size_bytes do
     {:error, :file_too_large}
   end
@@ -26,6 +31,14 @@ defmodule CrmReactor.Storage do
   def get(storage_key), do: impl().get(storage_key)
 
   def delete(storage_key), do: impl().delete(storage_key)
+
+  def presigned_url(storage_key, opts \\ []) do
+    if function_exported?(impl(), :presigned_url, 2) do
+      impl().presigned_url(storage_key, opts)
+    else
+      {:error, :not_supported}
+    end
+  end
 
   def max_size_bytes, do: @max_size_bytes
 

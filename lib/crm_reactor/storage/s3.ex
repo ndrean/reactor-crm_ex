@@ -36,7 +36,8 @@ defmodule CrmReactor.Storage.S3 do
     end
   end
 
-  @doc "Generate a presigned GET URL valid for `expires_in` seconds (default 300)."
+  @impl true
+  @doc "Generate a presigned GET URL valid for `expires_in` seconds (default 10)."
   def presigned_url(key, opts \\ []) do
     expires_in = Keyword.get(opts, :expires_in, 10)
     public_config = ex_aws_config() |> Keyword.merge(public_s3_config())

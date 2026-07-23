@@ -6,6 +6,7 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
 
   alias CrmReactor.Emails.IncomingEmail
   alias CrmReactor.Repo
+  alias Phoenix.LiveView.JS
 
   @impl true
   def mount(_params, _session, socket) do
@@ -41,10 +42,20 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
 
   @impl true
   def handle_event("download_attachment", %{"key" => key}, socket) do
-    case CrmReactor.Storage.S3.presigned_url(key) do
-      {:ok, url} -> {:noreply, redirect(socket, external: url)}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not generate download link.")}
+    if valid_storage_key?(key, socket.assigns.emails) do
+      case CrmReactor.Storage.presigned_url(key) do
+        {:ok, url} -> {:noreply, redirect(socket, external: url)}
+        {:error, _} -> {:noreply, put_flash(socket, :error, "Could not generate download link.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Invalid attachment.")}
     end
+  end
+
+  defp valid_storage_key?(key, emails) do
+    Enum.any?(emails, fn email ->
+      Enum.any?(email.attachments || [], fn att -> att["storage_key"] == key end)
+    end)
   end
 
   defp format_size(nil), do: "?"
@@ -95,8 +106,7 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
             <td style="padding:10px 16px;font-size:0.875rem;"><%= email.subject || "—" %></td>
             <td style="text-align:center;padding:10px 16px;">
               <span
-                phx-click="toggle_status"
-                phx-value-id={email.id}
+                phx-click={JS.push("toggle_status", value: %{id: email.id})}
                 style={"display:inline-block;padding:2px 10px;border-radius:12px;font-size:0.75rem;font-weight:500;cursor:pointer;" <>
                   if(email.status == "pending",
                     do: "background:#fef3c7;color:#92400e;",

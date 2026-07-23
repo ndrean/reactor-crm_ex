@@ -153,13 +153,15 @@ services:
 
   minio-init:
     image: minio/mc:latest
+    environment:
+      MINIO_BUCKET: ${MINIO_BUCKET:-crm-reactor}
     entrypoint: >
       /bin/sh -c "
       until mc alias set myminio http://minio:9000 $$(cat /run/secrets/minio_root_user) $$(cat /run/secrets/minio_root_password); do
         echo 'Waiting for MinIO...'; sleep 2;
       done;
-      mc mb --ignore-existing myminio/crm-reactor;
-      echo 'MinIO bucket initialized successfully';
+      mc mb --ignore-existing myminio/$${MINIO_BUCKET};
+      echo 'MinIO bucket $${MINIO_BUCKET} initialized successfully';
       "
     secrets:
       - minio_root_user

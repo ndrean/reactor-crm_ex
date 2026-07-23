@@ -123,7 +123,6 @@ remove_existing_stack() {
 }
 
 deploy_stack() {
-  remove_existing_stack
   echo "==> Deploying stack: $STACK_NAME"
   CRM_IMAGE="$IMAGE_NAME" docker stack deploy -c "$STACK_FILE" "$STACK_NAME"
   echo "==> Stack deployed. Checking services..."
@@ -192,7 +191,22 @@ deploy_stack
 # Initialize MinIO bucket (idempotent — mc mb --ignore-existing)
 echo "==> Initializing MinIO bucket..."
 docker service scale "${STACK_NAME}_minio-init=1" --detach
-sleep 10
+
+echo "  Waiting for MinIO init to finish..."
+minio_attempts=0
+while [[ $minio_attempts -lt 30 ]]; do
+  minio_state=$(docker service ps "${STACK_NAME}_minio-init" --format '{{.CurrentState}}' --filter 'desired-state=shutdown' 2>/dev/null | head -1)
+  if [[ "$minio_state" == *"Complete"* ]]; then
+    echo "  MinIO bucket initialized successfully."
+    break
+  elif [[ "$minio_state" == *"Failed"* || "$minio_state" == *"Rejected"* ]]; then
+    echo "  WARNING: MinIO init failed. Check logs: docker service logs ${STACK_NAME}_minio-init"
+    break
+  fi
+  sleep 2
+  minio_attempts=$((minio_attempts + 1))
+done
+
 docker service scale "${STACK_NAME}_minio-init=0" --detach 2>/dev/null || true
 
 echo ""

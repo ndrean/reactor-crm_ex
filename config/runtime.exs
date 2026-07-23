@@ -71,12 +71,8 @@ config :crm_reactor,
       else: []
     ),
   s3_public_url:
-    if(System.get_env("MINIO_PUBLIC_HOST"),
-      do: [
-        scheme: "https://",
-        host: System.get_env("MINIO_PUBLIC_HOST"),
-        port: 443
-      ],
+    if(public_host = System.get_env("MINIO_PUBLIC_HOST"),
+      do: [scheme: "https://", host: public_host, port: 443],
       else: []
     ),
   bootstrap_token: read_secret.("bootstrap_token", "BOOTSTRAP_TOKEN", nil),
