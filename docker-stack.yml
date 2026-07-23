@@ -244,6 +244,7 @@ secrets:
 networks:
   backend:
     driver: overlay
+    attachable: true
   monitoring:
     driver: overlay
 
