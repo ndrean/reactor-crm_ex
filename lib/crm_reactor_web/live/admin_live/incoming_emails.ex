@@ -66,14 +66,15 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
       Emails received via the inbound webhook. Click a row to view the body.
     </p>
 
-    <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-      <thead>
+    <div style="overflow-x:auto;max-height:70vh;overflow-y:auto;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+    <table style="width:100%;border-collapse:collapse;background:#fff;">
+      <thead style="position:sticky;top:0;background:#fff;z-index:1;">
         <tr>
-          <th style="text-align:left;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">From</th>
+          <th style="text-align:left;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;width:180px;max-width:180px;">From</th>
           <th style="text-align:left;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">Subject</th>
-          <th style="text-align:center;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">Status</th>
-          <th style="text-align:center;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">Attachments</th>
-          <th style="text-align:right;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">Received</th>
+          <th style="text-align:center;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;width:80px;">Status</th>
+          <th style="text-align:center;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;width:80px;">Att.</th>
+          <th style="text-align:right;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;width:100px;">Received</th>
         </tr>
       </thead>
       <tbody>
@@ -90,7 +91,7 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
             phx-value-id={email.id}
             style={"border-bottom:1px solid #f0f0f0;cursor:pointer;" <> if(@expanded == email.id, do: "background:#f9fafb;", else: "")}
           >
-            <td style="padding:10px 16px;font-size:0.875rem;"><%= email.from_address %></td>
+            <td style="padding:10px 16px;font-size:0.875rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title={email.from_address}><%= email.from_address %></td>
             <td style="padding:10px 16px;font-size:0.875rem;"><%= email.subject || "—" %></td>
             <td style="text-align:center;padding:10px 16px;">
               <span
@@ -149,6 +150,7 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
         <% end %>
       </tbody>
     </table>
+    </div>
     """
   end
 end
