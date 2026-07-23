@@ -1,6 +1,8 @@
 ExUnit.start(exclude: [:external])
 Ecto.Adapters.SQL.Sandbox.mode(CrmReactor.Repo, :manual)
 
+Mox.defmock(CrmReactor.MockStorage, for: CrmReactor.Storage)
+
 mistral_ok? =
   case System.get_env("MISTRAL_API_KEY") do
     nil ->

@@ -68,6 +68,10 @@ services:
       MISTRAL_VISION_MODEL: ${MISTRAL_VISION_MODEL:-ministral-3b-2512}
       WHISPER_PROVIDER: ${WHISPER_PROVIDER:-mistral}
       STORAGE_PATH: ${STORAGE_PATH:-priv/uploads}
+      FILE_STORAGE_BACKEND: ${FILE_STORAGE_BACKEND:-s3}
+      MINIO_BUCKET: ${MINIO_BUCKET:-crm-reactor}
+      MINIO_HOST: minio
+      MINIO_PORT: "9000"
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       MAILER_FROM_EMAIL: ${MAILER_FROM_EMAIL:-noreply@crm-reactor.app}
       MAILER_FROM_NAME: ${MAILER_FROM_NAME:-CRM Reactor}
@@ -82,6 +86,8 @@ services:
       - email_webhook_secret
       - mailjet_api_key
       - mailjet_secret_key
+      - minio_root_user
+      - minio_root_password
     networks:
       - backend
       - monitoring
@@ -111,6 +117,53 @@ services:
         delay: 30s
         failure_action: rollback
         order: start-first
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+    secrets:
+      - minio_root_user
+      - minio_root_password
+    volumes:
+      - miniodata:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+      restart_policy:
+        condition: any
+        delay: 5s
+
+  minio-init:
+    image: minio/mc:latest
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set myminio http://minio:9000 $$(cat /run/secrets/minio_root_user) $$(cat /run/secrets/minio_root_password); do
+        echo 'Waiting for MinIO...'; sleep 2;
+      done;
+      mc mb --ignore-existing myminio/crm-reactor;
+      echo 'MinIO bucket initialized successfully';
+      "
+    secrets:
+      - minio_root_user
+      - minio_root_password
+    networks:
+      - backend
+    deploy:
+      replicas: 0
+      restart_policy:
+        condition: none
 
   prometheus:
     image: prom/prometheus:latest
@@ -183,6 +236,10 @@ secrets:
     external: true
   postgres_password:
     external: true
+  minio_root_user:
+    external: true
+  minio_root_password:
+    external: true
 
 networks:
   backend:
@@ -194,3 +251,4 @@ volumes:
   pgdata:
   promdata:
   grafanadata:
+  miniodata:

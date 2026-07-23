@@ -42,3 +42,5 @@ config :bcrypt_elixir, log_rounds: 1
 config :crm_reactor, CrmReactor.PromEx, disabled: true
 
 config :crm_reactor, enable_cache_listener: false
+
+config :crm_reactor, file_storage: CrmReactor.MockStorage

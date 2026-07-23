@@ -32,11 +32,17 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
     end
   end
 
+  @impl true
   def handle_event("toggle_expand", %{"id" => id}, socket) do
     id = String.to_integer(id)
     expanded = if socket.assigns.expanded == id, do: nil, else: id
     {:noreply, assign(socket, expanded: expanded)}
   end
+
+  defp format_size(nil), do: "?"
+  defp format_size(bytes) when bytes < 1024, do: "#{bytes} B"
+  defp format_size(bytes) when bytes < 1_048_576, do: "#{Float.round(bytes / 1024, 1)} KB"
+  defp format_size(bytes), do: "#{Float.round(bytes / 1_048_576, 1)} MB"
 
   defp list_emails do
     from(e in IncomingEmail, order_by: [desc: e.received_at], limit: 100)
@@ -58,13 +64,14 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
           <th style="text-align:left;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">From</th>
           <th style="text-align:left;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">Subject</th>
           <th style="text-align:center;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">Status</th>
+          <th style="text-align:center;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">Attachments</th>
           <th style="text-align:right;padding:10px 16px;font-size:0.8rem;font-weight:500;color:#666;border-bottom:1px solid #eee;">Received</th>
         </tr>
       </thead>
       <tbody>
         <%= if @emails == [] do %>
           <tr>
-            <td colspan="4" style="padding:20px;text-align:center;color:#999;font-size:0.875rem;">
+            <td colspan="5" style="padding:20px;text-align:center;color:#999;font-size:0.875rem;">
               Aucun email reçu.
             </td>
           </tr>
@@ -90,14 +97,32 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
                 <%= email.status %>
               </span>
             </td>
+            <% att_count = length(email.attachments || []) %>
+            <td style="text-align:center;padding:10px 16px;font-size:0.8rem;">
+              <%= if att_count > 0 do %>
+                <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:500;background:#e0e7ff;color:#3730a3;">
+                  <%= att_count %>
+                </span>
+              <% end %>
+            </td>
             <td style="text-align:right;padding:10px 16px;font-size:0.8rem;color:#666;">
               <%= Calendar.strftime(email.received_at, "%d/%m %H:%M") %>
             </td>
           </tr>
           <%= if @expanded == email.id do %>
             <tr style="background:#f9fafb;">
-              <td colspan="4" style="padding:12px 16px;">
+              <td colspan="5" style="padding:12px 16px;">
                 <pre style="white-space:pre-wrap;font-size:0.8rem;color:#374151;max-height:300px;overflow-y:auto;"><%= email.body_text || "(no body)" %></pre>
+                <%= if length(email.attachments || []) > 0 do %>
+                  <div style="margin-top:10px;padding-top:10px;border-top:1px solid #e5e7eb;">
+                    <strong style="font-size:0.8rem;color:#374151;">Attachments:</strong>
+                    <ul style="margin:4px 0 0;padding-left:20px;font-size:0.8rem;color:#6b7280;">
+                      <%= for att <- email.attachments do %>
+                        <li><%= att["original_filename"] %> (<%= att["content_type"] %>, <%= format_size(att["size"]) %>)</li>
+                      <% end %>
+                    </ul>
+                  </div>
+                <% end %>
               </td>
             </tr>
           <% end %>

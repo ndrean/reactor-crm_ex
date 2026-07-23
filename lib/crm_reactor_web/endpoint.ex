@@ -27,7 +27,6 @@ defmodule CrmReactorWeb.Endpoint do
     gzip: not code_reloading?,
     only: CrmReactorWeb.static_paths()
 
-
   # Code reloading can be explicitly enabled under the
   # :code_reloader configuration of your endpoint.
   if code_reloading? do
@@ -41,6 +40,7 @@ defmodule CrmReactorWeb.Endpoint do
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
+    length: 20_000_000,
     json_decoder: Phoenix.json_library()
 
   plug Plug.MethodOverride

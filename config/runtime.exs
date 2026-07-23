@@ -40,6 +40,32 @@ config :crm_reactor,
       else: read_secret.("admin_token", "ADMIN_TOKEN", "dev-admin-token")
     ),
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads"),
+  file_storage:
+    if(System.get_env("FILE_STORAGE_BACKEND") == "s3",
+      do: CrmReactor.Storage.S3,
+      else: CrmReactor.Storage.Local
+    ),
+  s3_bucket: System.get_env("MINIO_BUCKET", "crm-reactor"),
+  ex_aws_config: [
+    access_key_id:
+      if(config_env() == :prod,
+        do:
+          read_secret.("minio_root_user", "MINIO_ACCESS_KEY", nil) ||
+            raise("MINIO_ACCESS_KEY secret or env var is required in prod"),
+        else: read_secret.("minio_root_user", "MINIO_ACCESS_KEY", "minioadmin")
+      ),
+    secret_access_key:
+      if(config_env() == :prod,
+        do:
+          read_secret.("minio_root_password", "MINIO_SECRET_KEY", nil) ||
+            raise("MINIO_SECRET_KEY secret or env var is required in prod"),
+        else: read_secret.("minio_root_password", "MINIO_SECRET_KEY", "minioadmin")
+      ),
+    scheme: System.get_env("MINIO_SCHEME", "http://"),
+    host: System.get_env("MINIO_HOST", "localhost"),
+    port: String.to_integer(System.get_env("MINIO_PORT", "9000")),
+    s3_force_path_style: true
+  ],
   bootstrap_token: read_secret.("bootstrap_token", "BOOTSTRAP_TOKEN", nil),
   mailer_from:
     {System.get_env("MAILER_FROM_NAME", "CRM Reactor"),

@@ -75,6 +75,8 @@ create_secrets() {
       MAILJET_SECRET_KEY)   secret_name="mailjet_secret_key" ;;
       POSTGRES_USER)        secret_name="postgres_user" ;;
       POSTGRES_PASSWORD)    secret_name="postgres_password" ;;
+      MINIO_ACCESS_KEY)     secret_name="minio_root_user" ;;
+      MINIO_SECRET_KEY)     secret_name="minio_root_password" ;;
     esac
 
     if [[ -n "$secret_name" ]]; then
@@ -186,6 +188,12 @@ fi
 [[ -n "$SECRETS_FILE" ]] && create_secrets "$SECRETS_FILE"
 deploy_stack
 [[ "$DO_MIGRATE" == true ]] && run_migration
+
+# Initialize MinIO bucket (idempotent — mc mb --ignore-existing)
+echo "==> Initializing MinIO bucket..."
+docker service scale "${STACK_NAME}_minio-init=1" --detach
+sleep 10
+docker service scale "${STACK_NAME}_minio-init=0" --detach 2>/dev/null || true
 
 echo ""
 echo "==> Done! Useful commands:"

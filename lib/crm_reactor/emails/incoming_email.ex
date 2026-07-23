@@ -11,13 +11,14 @@ defmodule CrmReactor.Emails.IncomingEmail do
     field :body_text, :string
     field :status, :string, default: "pending"
     field :received_at, :utc_datetime
+    field :attachments, {:array, :map}, default: []
 
     timestamps(type: :utc_datetime)
   end
 
   def changeset(email, attrs) do
     email
-    |> cast(attrs, [:from_address, :subject, :body_text, :status, :received_at])
+    |> cast(attrs, [:from_address, :subject, :body_text, :status, :received_at, :attachments])
     |> validate_required([:from_address, :received_at])
     |> validate_inclusion(:status, ["pending", "completed"])
     |> truncate_body_text()

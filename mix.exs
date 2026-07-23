@@ -81,7 +81,11 @@ defmodule CrmReactor.MixProject do
       {:excoveralls, "~> 0.18", only: :test},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:ical, "~> 3.1"},
-      {:tz, "~> 0.28"}
+      {:tz, "~> 0.28"},
+      {:ex_aws, "~> 2.5"},
+      {:ex_aws_s3, "~> 2.5"},
+      {:hackney, "~> 1.20"},
+      {:sweet_xml, "~> 0.7"}
     ]
   end
 

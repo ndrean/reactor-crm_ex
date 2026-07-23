@@ -21,12 +21,15 @@ export default {
       attachmentEncoding: "base64"
     });
 
-    // Map attachments into a clean array for JSON
-    const attachments = (parsed.attachments || []).map((att) => ({
-      filename: att.filename || "file",
-      mimeType: att.mimeType,
-      content: att.content // Now a Base64 string!
-    }));
+    // Map attachments into a clean array for JSON, skip oversized (>13.4MB base64 ≈ 10MB binary)
+    const MAX_B64_LENGTH = 13_400_000;
+    const attachments = (parsed.attachments || [])
+      .filter((att) => typeof att.content === "string" && att.content.length <= MAX_B64_LENGTH)
+      .map((att) => ({
+        filename: att.filename || "file",
+        mimeType: att.mimeType,
+        content: att.content,
+      }));
 
     const resp = await fetch("https://reactor.nlex.uk/webhook/email", {
       method: "POST",
