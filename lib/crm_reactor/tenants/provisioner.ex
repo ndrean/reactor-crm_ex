@@ -197,6 +197,7 @@ defmodule CrmReactor.Tenants.Provisioner do
       "CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON #{name}.expenses (created_by)",
       "CREATE INDEX IF NOT EXISTS idx_execution_logs_logged_at ON #{name}.execution_logs (logged_at)",
       "CREATE INDEX IF NOT EXISTS idx_execution_logs_pending_id ON #{name}.execution_logs (pending_id)",
+      "CREATE INDEX IF NOT EXISTS idx_execution_logs_status ON #{name}.execution_logs (status)",
       "CREATE INDEX IF NOT EXISTS idx_execution_logs_triggered_by ON #{name}.execution_logs (triggered_by)",
       "CREATE INDEX IF NOT EXISTS idx_execution_attachments_log_id ON #{name}.execution_attachments (execution_log_id)"
     ]
