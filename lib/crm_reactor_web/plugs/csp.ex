@@ -13,7 +13,7 @@ defmodule CrmReactorWeb.Plugs.CSP do
         "script-src 'self' 'nonce-#{nonce}' https://unpkg.com; " <>
         "style-src 'self' 'unsafe-inline' https://unpkg.com; " <>
         "img-src 'self' data:; " <>
-        "connect-src 'self' wss:; " <>
+        "connect-src 'self' wss: https://unpkg.com; " <>
         "font-src 'self';"
 
     conn
