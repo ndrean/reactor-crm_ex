@@ -30,3 +30,7 @@ reactor.nlex.uk {
 minio.nlex.uk {
     reverse_proxy localhost:9001
 }
+
+s3.nlex.uk {
+    reverse_proxy localhost:9000
+}

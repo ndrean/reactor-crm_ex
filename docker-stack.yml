@@ -73,6 +73,7 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET:-crm-reactor}
       MINIO_HOST: minio
       MINIO_PORT: "9000"
+      MINIO_PUBLIC_HOST: ${MINIO_PUBLIC_HOST:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       MAILER_FROM_EMAIL: ${MAILER_FROM_EMAIL:-noreply@crm-reactor.app}
       MAILER_FROM_NAME: ${MAILER_FROM_NAME:-CRM Reactor}
@@ -123,6 +124,7 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     ports:
+      - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     environment:
       MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user

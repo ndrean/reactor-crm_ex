@@ -70,6 +70,15 @@ config :crm_reactor,
       ],
       else: []
     ),
+  s3_public_url:
+    if(System.get_env("MINIO_PUBLIC_HOST"),
+      do: [
+        scheme: "https://",
+        host: System.get_env("MINIO_PUBLIC_HOST"),
+        port: 443
+      ],
+      else: []
+    ),
   bootstrap_token: read_secret.("bootstrap_token", "BOOTSTRAP_TOKEN", nil),
   mailer_from:
     {System.get_env("MAILER_FROM_NAME", "CRM Reactor"),
