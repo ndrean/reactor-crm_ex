@@ -39,6 +39,14 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
     {:noreply, assign(socket, expanded: expanded)}
   end
 
+  @impl true
+  def handle_event("download_attachment", %{"key" => key}, socket) do
+    case CrmReactor.Storage.S3.presigned_url(key) do
+      {:ok, url} -> {:noreply, redirect(socket, external: url)}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "Could not generate download link.")}
+    end
+  end
+
   defp format_size(nil), do: "?"
   defp format_size(bytes) when bytes < 1024, do: "#{bytes} B"
   defp format_size(bytes) when bytes < 1_048_576, do: "#{Float.round(bytes / 1024, 1)} KB"
@@ -118,7 +126,19 @@ defmodule CrmReactorWeb.AdminLive.IncomingEmails do
                     <strong style="font-size:0.8rem;color:#374151;">Attachments:</strong>
                     <ul style="margin:4px 0 0;padding-left:20px;font-size:0.8rem;color:#6b7280;">
                       <%= for att <- email.attachments do %>
-                        <li><%= att["original_filename"] %> (<%= att["content_type"] %>, <%= format_size(att["size"]) %>)</li>
+                        <li>
+                          <%= if att["storage_key"] do %>
+                            <a
+                              href="#"
+                              phx-click="download_attachment"
+                              phx-value-key={att["storage_key"]}
+                              style="color:#4f46e5;text-decoration:underline;"
+                            ><%= att["original_filename"] %></a>
+                          <% else %>
+                            <%= att["original_filename"] %>
+                          <% end %>
+                          (<%= att["content_type"] %>, <%= format_size(att["size"]) %>)
+                        </li>
                       <% end %>
                     </ul>
                   </div>

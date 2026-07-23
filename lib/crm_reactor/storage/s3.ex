@@ -36,6 +36,13 @@ defmodule CrmReactor.Storage.S3 do
     end
   end
 
+  @doc "Generate a presigned GET URL valid for `expires_in` seconds (default 300)."
+  def presigned_url(key, opts \\ []) do
+    expires_in = Keyword.get(opts, :expires_in, 300)
+    config = ExAws.Config.new(:s3, ex_aws_config())
+    ExAws.S3.presigned_url(config, :get, bucket(), key, expires_in: expires_in)
+  end
+
   defp bucket do
     Application.get_env(:crm_reactor, :s3_bucket, "crm-reactor")
   end
