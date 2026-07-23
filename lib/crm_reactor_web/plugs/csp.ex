@@ -18,6 +18,8 @@ defmodule CrmReactorWeb.Plugs.CSP do
 
     conn
     |> put_resp_header("content-security-policy", csp)
+    |> put_resp_header("x-robots-tag", "noindex, nofollow")
+    |> put_resp_header("cache-control", "no-store, private")
     |> assign(:csp_nonce, nonce)
   end
 end
