@@ -13,6 +13,7 @@ defmodule CrmReactorWeb.Router do
     plug :put_root_layout, html: {CrmReactorWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug CrmReactorWeb.Plugs.CSP
     plug :fetch_current_account
   end
 

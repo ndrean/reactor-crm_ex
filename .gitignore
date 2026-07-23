@@ -39,4 +39,8 @@ crm_reactor-*.tar
 docker-compose.override.yml
 priv/uploads
 
+# Esbuild output (rebuilt on deploy)
+/priv/static/assets/
+/assets/node_modules/
+
 reactor-crm_ex.zip

@@ -37,7 +37,6 @@ config :phoenix, :filter_parameters, ["password", "secret", "token", "hashed_pas
 config :crm_reactor, CrmReactor.Mailer, adapter: Swoosh.Adapters.Local
 config :swoosh, :api_client, false
 
-
 config :crm_reactor, Oban,
   repo: CrmReactor.Repo,
   queues: [ingest: 50, mutations: 10, maintenance: 1, webhooks: 5],
@@ -58,5 +57,13 @@ config :crm_reactor, CrmReactor.PromEx,
   drop_metrics_groups: [],
   grafana: :disabled,
   metrics_server: :disabled
+
+config :esbuild,
+  version: "0.25.5",
+  crm_reactor: [
+    args: ~w(js/app.js --bundle --target=es2020 --outdir=../priv/static/assets),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ]
 
 import_config "#{config_env()}.exs"

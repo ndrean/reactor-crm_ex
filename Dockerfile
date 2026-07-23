@@ -22,6 +22,10 @@ RUN mix deps.compile || mix deps.compile telegex --force
 COPY lib lib
 COPY priv priv
 COPY rel rel
+COPY assets assets
+
+RUN mix esbuild.install --if-missing
+RUN mix assets.deploy
 
 RUN mix compile
 

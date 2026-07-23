@@ -13,6 +13,6 @@
   </head>
   <body>
     <%= @inner_content %>
-    <script type="module" src="/assets/app.js"></script>
+    <script defer nonce={assigns[:csp_nonce]} src="/assets/app.js"></script>
   </body>
 </html>
