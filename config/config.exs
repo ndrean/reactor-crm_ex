@@ -61,7 +61,7 @@ config :crm_reactor, CrmReactor.PromEx,
 config :esbuild,
   version: "0.25.5",
   crm_reactor: [
-    args: ~w(js/app.js --bundle --target=es2020 --outdir=../priv/static/assets),
+    args: ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets),
     cd: Path.expand("../assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
