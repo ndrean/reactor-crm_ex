@@ -6,6 +6,7 @@ defmodule CrmReactor.Reactors.Modules.Todos do
   alias CrmReactor.Reactors.PendingHelper
   alias CrmReactor.Repo
   alias CrmReactor.Workers.AppointmentReminderWorker
+  import CrmReactor.QueryHelpers, only: [ilike_pattern: 1]
   import Ecto.Query
 
   require Logger
@@ -300,7 +301,7 @@ defmodule CrmReactor.Reactors.Modules.Todos do
 
   defp find_todos(ctx) do
     subject = extract_subject(ctx.params)
-    pattern = "%#{subject}%"
+    pattern = ilike_pattern(subject)
 
     query =
       from(t in Todo,
@@ -320,7 +321,7 @@ defmodule CrmReactor.Reactors.Modules.Todos do
 
   defp find_appointments(ctx) do
     subject = extract_subject(ctx.params)
-    pattern = "%#{subject}%"
+    pattern = ilike_pattern(subject)
 
     query =
       from(t in Todo,
@@ -476,17 +477,17 @@ defmodule CrmReactor.Reactors.Modules.Todos do
   defp apply_contact_filter(query, _name, :all), do: query
 
   defp apply_contact_filter(query, name, :not_found) do
-    pattern = "%#{name}%"
+    pattern = ilike_pattern(name)
     from(t in query, where: ilike(t.subject, ^pattern))
   end
 
   defp apply_contact_filter(query, name, {:found, contact_id}) do
-    pattern = "%#{name}%"
+    pattern = ilike_pattern(name)
     from(t in query, where: t.contact_id == ^contact_id or ilike(t.subject, ^pattern))
   end
 
   defp apply_contact_filter(query, name, schema) when is_binary(schema) do
-    pattern = "%#{name}%"
+    pattern = ilike_pattern(name)
 
     case resolve_contact_id(name, schema) do
       nil -> from(t in query, where: ilike(t.subject, ^pattern))
@@ -501,7 +502,7 @@ defmodule CrmReactor.Reactors.Modules.Todos do
 
     query =
       Enum.reduce(words, from(c in Contact), fn word, q ->
-        pattern = "%#{word}%"
+        pattern = ilike_pattern(word)
         from c in q, where: ilike(c.first_name, ^pattern) or ilike(c.last_name, ^pattern)
       end)
 

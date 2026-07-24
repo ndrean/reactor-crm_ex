@@ -5,6 +5,7 @@ defmodule CrmReactor.Reactors.Modules.Contacts do
   alias CrmReactor.CRM.{Contact, ExecutionLog}
   alias CrmReactor.Reactors.PendingHelper
   alias CrmReactor.Repo
+  import CrmReactor.QueryHelpers, only: [ilike_pattern: 1]
   import Ecto.Query
 
   require Logger
@@ -62,7 +63,10 @@ defmodule CrmReactor.Reactors.Modules.Contacts do
           from(c in Contact, select: count(c.id))
 
         filter ->
-          from(c in Contact, where: ilike(c.company_name, ^"%#{filter}%"), select: count(c.id))
+          from(c in Contact,
+            where: ilike(c.company_name, ^ilike_pattern(filter)),
+            select: count(c.id)
+          )
       end
 
     count = Repo.one(query, prefix: ctx.tenant_schema)
@@ -158,7 +162,7 @@ defmodule CrmReactor.Reactors.Modules.Contacts do
         Repo.all(from(c in Contact, where: c.phone_hash == ^normalized), prefix: schema)
 
       company = params["search_company"] ->
-        Repo.all(from(c in Contact, where: ilike(c.company_name, ^"%#{company}%")),
+        Repo.all(from(c in Contact, where: ilike(c.company_name, ^ilike_pattern(company))),
           prefix: schema
         )
 
@@ -249,7 +253,7 @@ defmodule CrmReactor.Reactors.Modules.Contacts do
 
       _ ->
         Enum.reduce(words, from(c in Contact), fn word, query ->
-          pattern = "%#{word}%"
+          pattern = ilike_pattern(word)
 
           from c in query,
             where:

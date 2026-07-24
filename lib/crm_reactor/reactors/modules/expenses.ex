@@ -4,6 +4,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
   alias CrmReactor.CRM.{Contact, ExecutionLog, Expense}
   alias CrmReactor.Reactors.PendingHelper
   alias CrmReactor.Repo
+  import CrmReactor.QueryHelpers, only: [ilike_pattern: 1]
   import Ecto.Query
 
   @categories ~w(restaurant transport hébergement fournitures autre)
@@ -101,7 +102,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
 
   defp find_expenses(ctx) do
     description = ctx.params["description"] || ""
-    pattern = "%#{description}%"
+    pattern = ilike_pattern(description)
 
     query =
       from(e in Expense,
@@ -210,7 +211,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
 
     query =
       Enum.reduce(words, from(c in Contact), fn word, q ->
-        pattern = "%#{word}%"
+        pattern = ilike_pattern(word)
         from c in q, where: ilike(c.first_name, ^pattern) or ilike(c.last_name, ^pattern)
       end)
 

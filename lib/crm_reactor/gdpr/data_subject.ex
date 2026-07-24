@@ -10,6 +10,7 @@ defmodule CrmReactor.GDPR.DataSubject do
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.{Tenant, UserMapping}
 
+  import CrmReactor.QueryHelpers, only: [ilike_pattern: 1]
   import Ecto.Query
 
   @redacted "[REDACTED]"
@@ -76,7 +77,7 @@ defmodule CrmReactor.GDPR.DataSubject do
         {:error, :not_found}
 
       contact ->
-        name_pattern = "%#{contact.first_name}%"
+        name_pattern = ilike_pattern(contact.first_name)
 
         Repo.transaction(fn ->
           Repo.delete!(contact, prefix: schema)
