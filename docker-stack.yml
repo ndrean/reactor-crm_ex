@@ -41,8 +41,6 @@ services:
       - database_url
       - secret_key_base
       - cloak_key
-      - admin_token
-      - email_webhook_secret
       - mailjet_api_key
       - mailjet_secret_key
     networks:
