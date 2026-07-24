@@ -58,6 +58,8 @@ defmodule CrmReactor.Reactors.Modules.DataExport do
   end
 
   defp fetch_data(schema) do
+    safe = safe_schema(schema)
+
     result =
       Repo.query!(
         """
@@ -67,7 +69,7 @@ defmodule CrmReactor.Reactors.Modules.DataExport do
           COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
           COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
           COALESCE(SUM(total_tokens), 0) AS total_tokens
-        FROM #{schema}.execution_logs
+        FROM #{safe}.execution_logs
         WHERE logged_at >= NOW() - INTERVAL '30 days'
         GROUP BY DATE(logged_at)
         ORDER BY date DESC
@@ -82,4 +84,10 @@ defmodule CrmReactor.Reactors.Modules.DataExport do
 
   defp format_output([]), do: "Aucune donnée sur les 30 derniers jours."
   defp format_output(rows), do: "Utilisation (30j) :\n" <> Enum.join(rows, "\n")
+
+  defp safe_schema(name) do
+    if Regex.match?(~r/^[a-z_][a-z0-9_]*$/, name),
+      do: name,
+      else: raise("invalid schema: #{name}")
+  end
 end

@@ -122,8 +122,17 @@ defmodule CrmReactorWeb.AdminLive.Dashboard do
 
   @impl true
   def handle_event("filter", params, socket) do
-    tenant = if params["tenant"] in [nil, ""], do: nil, else: params["tenant"]
-    status = if params["status"] in [nil, ""], do: nil, else: params["status"]
+    tenant =
+      case params["tenant"] do
+        t when t in [nil, ""] -> nil
+        t -> if t in socket.assigns.tenants, do: t
+      end
+
+    status =
+      case params["status"] do
+        s when s in [nil, ""] -> nil
+        s -> if s in ~w(processing completed pending error), do: s
+      end
 
     {logs, has_more} = load_logs(tenant, status, nil)
     cursor = last_cursor(logs)
