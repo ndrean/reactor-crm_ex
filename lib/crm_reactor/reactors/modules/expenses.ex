@@ -151,7 +151,13 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
   defp format_result([]), do: "Aucune note de frais."
 
   defp format_result(expenses) do
-    total = Enum.reduce(expenses, Decimal.new(0), fn e, acc -> Decimal.add(acc, e.amount) end)
+    totals_by_currency =
+      expenses
+      |> Enum.group_by(& &1.currency, & &1.amount)
+      |> Enum.map_join(", ", fn {currency, amounts} ->
+        total = Enum.reduce(amounts, Decimal.new(0), &Decimal.add/2)
+        "#{total} #{currency}"
+      end)
 
     lines =
       Enum.map_join(expenses, "\n", fn e ->
@@ -160,7 +166,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
         "• #{e.amount} #{e.currency} (#{e.expense_date})#{cat}#{desc}"
       end)
 
-    "Notes de frais (#{length(expenses)}, total #{total} EUR) :\n#{lines}"
+    "Notes de frais (#{length(expenses)}, total #{totals_by_currency}) :\n#{lines}"
   end
 
   defp expense_map(e) do

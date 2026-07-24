@@ -22,7 +22,7 @@ defmodule CrmReactor.Workers.RetentionWorker do
       %{num_rows: count} =
         Repo.query!(
           """
-          UPDATE #{schema}.execution_logs
+          UPDATE "#{schema}"."execution_logs"
           SET raw_input = '[RETAINED]',
               output = '[RETAINED]',
               error_message = NULL,

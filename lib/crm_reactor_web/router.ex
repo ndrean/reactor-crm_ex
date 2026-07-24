@@ -178,5 +178,7 @@ defmodule CrmReactorWeb.Router do
     get "/metrics", MetricsController, :index
   end
 
-  forward "/mailbox", Plug.Swoosh.MailboxPreview
+  if Application.compile_env(:crm_reactor, :dev_routes, false) do
+    forward "/mailbox", Plug.Swoosh.MailboxPreview
+  end
 end

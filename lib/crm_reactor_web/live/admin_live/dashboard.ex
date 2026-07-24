@@ -151,7 +151,11 @@ defmodule CrmReactorWeb.AdminLive.Dashboard do
 
     {:noreply,
      socket
-     |> assign(has_more: has_more, cursor: new_cursor)
+     |> assign(
+       has_more: has_more,
+       cursor: new_cursor,
+       log_count: socket.assigns.log_count + length(logs)
+     )
      |> stream(:logs, logs)}
   end
 
@@ -189,7 +193,7 @@ defmodule CrmReactorWeb.AdminLive.Dashboard do
           |> Enum.map_join(" UNION ALL ", fn schema ->
             safe = safe_schema(schema)
 
-            "SELECT id, triggered_by, raw_input, module, action, status, output, logged_at, '#{safe}' AS schema_name FROM #{safe}.execution_logs#{where_clause}"
+            ~s|SELECT id, triggered_by, raw_input, module, action, status, output, logged_at, '#{safe}' AS schema_name FROM "#{safe}"."execution_logs"#{where_clause}|
           end)
 
         sql =

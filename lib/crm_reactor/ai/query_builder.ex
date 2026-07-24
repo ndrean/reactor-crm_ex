@@ -165,14 +165,14 @@ defmodule CrmReactor.AI.QueryBuilder do
     })
   end
 
-  defp parse_llm_response(body) do
-    [choice | _] = body["choices"]
-
+  defp parse_llm_response(%{"choices" => [choice | _]}) do
     case Jason.decode(choice["message"]["content"]) do
       {:ok, parsed} -> {:ok, parsed}
       {:error, _} -> {:error, "invalid JSON from Mistral LLM"}
     end
   end
+
+  defp parse_llm_response(_), do: {:error, "empty or missing choices from Mistral LLM"}
 
   defp validate_filters(filters, field_map) when is_list(filters) do
     invalid =

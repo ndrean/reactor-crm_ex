@@ -35,21 +35,11 @@ config :crm_reactor,
   telegram_bot_token: telegram_bot_token,
   telegram_secret_token: read_secret.("telegram_secret_token", "TELEGRAM_SECRET_TOKEN", nil),
   email_webhook_secret:
-    if(config_env() == :prod,
-      do:
-        read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil) ||
-          raise("EMAIL_WEBHOOK_SECRET secret or env var is required in prod"),
-      else:
-        read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil) ||
-          Application.get_env(:crm_reactor, :email_webhook_secret)
-    ),
+    read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil) ||
+      Application.get_env(:crm_reactor, :email_webhook_secret),
   admin_token:
-    if(config_env() == :prod,
-      do:
-        read_secret.("admin_token", "ADMIN_TOKEN", nil) ||
-          raise("ADMIN_TOKEN secret or env var is required in prod"),
-      else: read_secret.("admin_token", "ADMIN_TOKEN", "dev-admin-token")
-    ),
+    read_secret.("admin_token", "ADMIN_TOKEN", nil) ||
+      if(config_env() != :prod, do: "dev-admin-token"),
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads"),
   file_storage: file_storage_backend,
   s3_bucket: System.get_env("MINIO_BUCKET", "crm-reactor"),
@@ -169,4 +159,15 @@ if config_env() == :prod do
       "https://localhost"
     ],
     secret_key_base: secret_key_base
+
+  # Validate server-only secrets — skip for bin/migrate, bin/eval, etc.
+  if System.get_env("PHX_SERVER") == "true" do
+    unless Application.get_env(:crm_reactor, :email_webhook_secret) do
+      raise "EMAIL_WEBHOOK_SECRET secret or env var is required when serving"
+    end
+
+    unless Application.get_env(:crm_reactor, :admin_token) do
+      raise "ADMIN_TOKEN secret or env var is required when serving"
+    end
+  end
 end

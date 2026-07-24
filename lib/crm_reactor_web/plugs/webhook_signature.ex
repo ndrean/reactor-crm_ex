@@ -9,6 +9,7 @@ defmodule CrmReactorWeb.Plugs.WebhookSignature do
   """
 
   import Plug.Conn
+  require Logger
   @behaviour Plug
 
   @impl true
@@ -38,6 +39,10 @@ defmodule CrmReactorWeb.Plugs.WebhookSignature do
       end
     else
       _ ->
+        if !is_binary(secret) or byte_size(secret) == 0 do
+          Logger.error("Webhook secret not configured for #{inspect(secret_key)}")
+        end
+
         conn |> send_resp(401, ~s({"error":"Missing or invalid signature"})) |> halt()
     end
   end
