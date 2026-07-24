@@ -8,20 +8,9 @@ defmodule CrmReactorWeb.InboundEmailController do
   @max_total_bytes 10 * 1024 * 1024
   @max_attachment_count 20
 
+  # Authentication is handled by WebhookSignature plug in the router pipeline.
   def create(conn, params) do
-    expected = Application.get_env(:crm_reactor, :email_webhook_secret)
-
-    case get_req_header(conn, "x-email-secret") do
-      [secret] when is_binary(secret) and is_binary(expected) ->
-        if Plug.Crypto.secure_compare(secret, expected) do
-          handle_email(conn, params)
-        else
-          conn |> put_status(401) |> json(%{error: "Invalid secret"})
-        end
-
-      _ ->
-        conn |> put_status(401) |> json(%{error: "Invalid secret"})
-    end
+    handle_email(conn, params)
   end
 
   defp handle_email(conn, %{"from" => from} = params) when is_binary(from) do

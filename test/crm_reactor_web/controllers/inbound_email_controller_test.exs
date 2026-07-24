@@ -11,8 +11,17 @@ defmodule CrmReactorWeb.InboundEmailControllerTest do
   setup :set_mox_global
   setup :verify_on_exit!
 
-  defp auth_conn(conn) do
-    put_req_header(conn, "x-email-secret", @secret)
+  defp sign_and_post(conn, path, params) do
+    body = Jason.encode!(params)
+
+    signature =
+      :crypto.mac(:hmac, :sha256, @secret, body)
+      |> Base.encode16(case: :lower)
+
+    conn
+    |> put_req_header("content-type", "application/json")
+    |> put_req_header("x-webhook-signature", "sha256=#{signature}")
+    |> post(path, body)
   end
 
   defp base_params do
@@ -24,27 +33,36 @@ defmodule CrmReactorWeb.InboundEmailControllerTest do
   end
 
   describe "create/2 authentication" do
-    test "rejects request without secret", %{conn: conn} do
-      conn = post(conn, ~p"/webhook/email", base_params())
-      assert json_response(conn, 401)["error"] == "Invalid secret"
-    end
-
-    test "rejects request with wrong secret", %{conn: conn} do
+    test "rejects request without signature", %{conn: conn} do
       conn =
         conn
-        |> put_req_header("x-email-secret", "wrong-secret")
-        |> post(~p"/webhook/email", base_params())
+        |> put_req_header("content-type", "application/json")
+        |> post(~p"/webhook/email", Jason.encode!(base_params()))
 
-      assert json_response(conn, 401)["error"] == "Invalid secret"
+      assert conn.status == 401
+      assert conn.resp_body =~ "Missing or invalid signature"
+    end
+
+    test "rejects request with wrong signature", %{conn: conn} do
+      body = Jason.encode!(base_params())
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header(
+          "x-webhook-signature",
+          "sha256=0000000000000000000000000000000000000000000000000000000000000000"
+        )
+        |> post(~p"/webhook/email", body)
+
+      assert conn.status == 401
+      assert conn.resp_body =~ "Invalid signature"
     end
   end
 
   describe "create/2 without attachments" do
     test "creates incoming email", %{conn: conn} do
-      conn =
-        conn
-        |> auth_conn()
-        |> post(~p"/webhook/email", base_params())
+      conn = sign_and_post(conn, ~p"/webhook/email", base_params())
 
       assert json_response(conn, 200)["ok"] == true
 
@@ -55,10 +73,7 @@ defmodule CrmReactorWeb.InboundEmailControllerTest do
     end
 
     test "rejects missing from field", %{conn: conn} do
-      conn =
-        conn
-        |> auth_conn()
-        |> post(~p"/webhook/email", %{"subject" => "Test"})
+      conn = sign_and_post(conn, ~p"/webhook/email", %{"subject" => "Test"})
 
       assert json_response(conn, 400)["error"] == "Missing required field: from"
     end
@@ -79,10 +94,7 @@ defmodule CrmReactorWeb.InboundEmailControllerTest do
           %{"filename" => "test.txt", "mimeType" => "text/plain", "content" => b64}
         ])
 
-      conn =
-        conn
-        |> auth_conn()
-        |> post(~p"/webhook/email", params)
+      conn = sign_and_post(conn, ~p"/webhook/email", params)
 
       assert json_response(conn, 200)["ok"] == true
 
@@ -101,16 +113,12 @@ defmodule CrmReactorWeb.InboundEmailControllerTest do
           %{"filename" => "bad.txt", "mimeType" => "text/plain", "content" => "!!!not-base64!!!"}
         ])
 
-      conn =
-        conn
-        |> auth_conn()
-        |> post(~p"/webhook/email", params)
+      conn = sign_and_post(conn, ~p"/webhook/email", params)
 
       assert json_response(conn, 422)["error"] == "Invalid base64 attachment content"
     end
 
     test "rejects total size exceeding 10MB", %{conn: conn} do
-      # Use 4MB each (under 5MB per-file guard), three files totaling 12MB > 10MB
       big_content = :crypto.strong_rand_bytes(4 * 1024 * 1024)
       b64 = Base.encode64(big_content)
 
@@ -127,10 +135,7 @@ defmodule CrmReactorWeb.InboundEmailControllerTest do
           %{"filename" => "big3.bin", "mimeType" => "application/octet-stream", "content" => b64}
         ])
 
-      conn =
-        conn
-        |> auth_conn()
-        |> post(~p"/webhook/email", params)
+      conn = sign_and_post(conn, ~p"/webhook/email", params)
 
       assert json_response(conn, 422)["error"] == "Total attachments exceed 10MB limit"
     end
@@ -162,10 +167,7 @@ defmodule CrmReactorWeb.InboundEmailControllerTest do
           }
         ])
 
-      conn =
-        conn
-        |> auth_conn()
-        |> post(~p"/webhook/email", params)
+      conn = sign_and_post(conn, ~p"/webhook/email", params)
 
       assert json_response(conn, 422)["error"] == "Failed to store attachment"
       assert Repo.aggregate(IncomingEmail, :count) == 0

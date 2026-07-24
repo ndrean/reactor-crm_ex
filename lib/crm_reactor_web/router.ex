@@ -33,6 +33,12 @@ defmodule CrmReactorWeb.Router do
     plug CrmReactorWeb.Plugs.RateLimiter, max: 60, window_ms: 60_000, prefix: "admin_api"
   end
 
+  pipeline :signed_webhook do
+    plug CrmReactorWeb.Plugs.WebhookSignature,
+      secret_key: :email_webhook_secret,
+      header: "x-webhook-signature"
+  end
+
   # Public: login page (redirects if already logged in)
   scope "/", CrmReactorWeb do
     pipe_through [:browser, :redirect_if_authenticated]
@@ -158,6 +164,11 @@ defmodule CrmReactorWeb.Router do
     pipe_through [:api, :rate_limited]
 
     post "/telegram", WebhookController, :telegram
+  end
+
+  scope "/webhook", CrmReactorWeb do
+    pipe_through [:api, :rate_limited, :signed_webhook]
+
     post "/email", InboundEmailController, :create
   end
 

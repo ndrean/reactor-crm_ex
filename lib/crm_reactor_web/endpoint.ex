@@ -42,7 +42,8 @@ defmodule CrmReactorWeb.Endpoint do
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
     length: 20_000_000,
-    json_decoder: Phoenix.json_library()
+    json_decoder: Phoenix.json_library(),
+    body_reader: {CrmReactorWeb.Plugs.CacheRawBody, :read_body, []}
 
   plug Plug.MethodOverride
   plug Plug.Head
