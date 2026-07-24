@@ -165,11 +165,14 @@ defmodule CrmReactorWeb.AdminLive.Dashboard do
   end
 
   defp load_logs(tenant_filter, status_filter, cursor) do
+    valid_schemas = Repo.all(from(t in Tenant, select: t.schema_name))
+
     schemas =
       if tenant_filter do
-        ["customer_#{tenant_filter}"]
+        candidate = "customer_#{tenant_filter}"
+        if candidate in valid_schemas, do: [candidate], else: []
       else
-        Repo.all(from(t in Tenant, select: t.schema_name))
+        valid_schemas
       end
 
     case schemas do
@@ -260,7 +263,7 @@ defmodule CrmReactorWeb.AdminLive.Dashboard do
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   defp safe_schema(name) do
-    if Regex.match?(~r/^[a-z_][a-z0-9_]*$/, name),
+    if Regex.match?(~r/^customer_[a-z0-9_]+$/, name),
       do: name,
       else: raise("invalid schema: #{name}")
   end

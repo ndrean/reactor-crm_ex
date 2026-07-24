@@ -1,6 +1,8 @@
 defmodule CrmReactor.Reactors.Modules.DataExport do
   @moduledoc "30-day usage and token cost report — sent by email if admin_email is configured."
 
+  import Ecto.Query
+
   alias CrmReactor.CRM.ExecutionLog
   alias CrmReactor.Emails.DataExportEmail
   alias CrmReactor.Mailer
@@ -58,36 +60,26 @@ defmodule CrmReactor.Reactors.Modules.DataExport do
   end
 
   defp fetch_data(schema) do
-    safe = safe_schema(schema)
-
-    result =
-      Repo.query!(
-        """
-        SELECT
-          DATE(logged_at) AS date,
-          COUNT(*) AS interactions,
-          COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens,
-          COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
-          COALESCE(SUM(total_tokens), 0) AS total_tokens
-        FROM #{safe}.execution_logs
-        WHERE logged_at >= NOW() - INTERVAL '30 days'
-        GROUP BY DATE(logged_at)
-        ORDER BY date DESC
-        """,
-        []
+    query =
+      from(e in "execution_logs",
+        where: e.logged_at >= ago(30, "day"),
+        group_by: fragment("DATE(?)", e.logged_at),
+        order_by: [desc: fragment("DATE(?)", e.logged_at)],
+        select: %{
+          date: fragment("DATE(?)", e.logged_at),
+          interactions: count(e.id),
+          prompt_tokens: coalesce(sum(e.prompt_tokens), 0),
+          completion_tokens: coalesce(sum(e.completion_tokens), 0),
+          total_tokens: coalesce(sum(e.total_tokens), 0)
+        }
       )
 
-    Enum.map(result.rows, fn [date, count, pt, ct, tt] ->
-      "#{date}: #{count} requêtes, #{tt} tokens (#{pt} prompt + #{ct} completion)"
+    Repo.all(query, prefix: schema)
+    |> Enum.map(fn row ->
+      "#{row.date}: #{row.interactions} requêtes, #{row.total_tokens} tokens (#{row.prompt_tokens} prompt + #{row.completion_tokens} completion)"
     end)
   end
 
   defp format_output([]), do: "Aucune donnée sur les 30 derniers jours."
   defp format_output(rows), do: "Utilisation (30j) :\n" <> Enum.join(rows, "\n")
-
-  defp safe_schema(name) do
-    if Regex.match?(~r/^[a-z_][a-z0-9_]*$/, name),
-      do: name,
-      else: raise("invalid schema: #{name}")
-  end
 end

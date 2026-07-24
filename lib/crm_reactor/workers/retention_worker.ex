@@ -42,5 +42,5 @@ defmodule CrmReactor.Workers.RetentionWorker do
     :ok
   end
 
-  defp safe_schema?(name), do: Regex.match?(~r/\A[a-z_][a-z0-9_]*\z/, name)
+  defp safe_schema?(name), do: Regex.match?(~r/\Acustomer_[a-z0-9_]+\z/, name)
 end

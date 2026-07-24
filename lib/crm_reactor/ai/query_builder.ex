@@ -210,8 +210,10 @@ defmodule CrmReactor.AI.QueryBuilder do
   defp apply_condition(query, field, "!=", value),
     do: from(q in query, where: field(q, ^field) != ^value)
 
-  defp apply_condition(query, field, "like", value) when is_binary(value),
-    do: from(q in query, where: ilike(field(q, ^field), ^"%#{value}%"))
+  defp apply_condition(query, field, "like", value) when is_binary(value) do
+    escaped = value |> String.replace("\\", "\\\\") |> String.replace("%", "\\%") |> String.replace("_", "\\_")
+    from(q in query, where: ilike(field(q, ^field), ^"%#{escaped}%"))
+  end
 
   defp apply_condition(query, field, ">=", value),
     do: from(q in query, where: field(q, ^field) >= ^value)
