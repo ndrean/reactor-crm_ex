@@ -9,7 +9,8 @@ defmodule CrmReactorWeb.Endpoint do
     key: "_crm_reactor_key",
     signing_salt: "Ew/hSWXS",
     encryption_salt: "k8PqR3vN",
-    same_site: "Lax"
+    same_site: "Lax",
+    secure: true
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
