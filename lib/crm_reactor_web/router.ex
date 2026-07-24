@@ -61,7 +61,6 @@ defmodule CrmReactorWeb.Router do
 
     get "/login/magic/:token", AccountSessionController, :magic_link
     delete "/logout", AccountSessionController, :delete
-    get "/logout", AccountSessionController, :delete
   end
 
   # Public: invite accept flow

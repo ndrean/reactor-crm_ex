@@ -280,9 +280,9 @@ defmodule CrmReactorWeb.ChatLive do
           >
             Calendrier
           </button>
-          <a href="/logout" style="font-size: 0.85rem; color: #dc2626; text-decoration: none;">
+          <.link href="/logout" method="delete" style="font-size: 0.85rem; color: #dc2626; text-decoration: none;">
             Déconnexion
-          </a>
+          </.link>
         </div>
       </div>
 

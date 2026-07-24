@@ -98,7 +98,7 @@ defmodule CrmReactorWeb.AdminLive.Users do
         <td style="padding:10px 16px;font-size:0.875rem;font-family:monospace;"><%= user.tenant_id %></td>
         <td style="padding:10px 16px;font-size:0.875rem;font-family:monospace;"><%= user.telegram_id || "-" %></td>
         <td style="padding:10px 16px;font-size:0.875rem;">
-          <%= status_badge(user) %>
+          <.status_badge status={user.status} has_account={user.has_account} telegram_id={user.telegram_id} invite_expired={user.status == "pending" and invite_expired?(user)} />
         </td>
         <td style="padding:10px 16px;font-size:0.875rem;">
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -130,32 +130,36 @@ defmodule CrmReactorWeb.AdminLive.Users do
     """
   end
 
-  defp status_badge(user) do
-    case user.status do
-      "suspended" ->
-        Phoenix.HTML.raw(~s(<span style="color:#dc2626;font-weight:500;">Suspended</span>))
+  defp status_badge(%{status: "suspended"} = assigns) do
+    ~H"""
+    <span style="color:#dc2626;font-weight:500;">Suspended</span>
+    """
+  end
 
-      "pending" ->
-        if invite_expired?(user),
-          do: Phoenix.HTML.raw(~s(<span style="color:#9ca3af;font-weight:500;">Expired</span>)),
-          else: Phoenix.HTML.raw(~s(<span style="color:#f59e0b;">Pending invite</span>))
+  defp status_badge(%{invite_expired: true} = assigns) do
+    ~H"""
+    <span style="color:#9ca3af;font-weight:500;">Expired</span>
+    """
+  end
 
-      _ ->
-        channels =
-          [
-            if(user.has_account, do: "Web"),
-            if(user.telegram_id, do: "Telegram")
-          ]
-          |> Enum.filter(& &1)
-          |> Enum.join(" + ")
+  defp status_badge(%{status: "pending"} = assigns) do
+    ~H"""
+    <span style="color:#f59e0b;">Pending invite</span>
+    """
+  end
 
-        suffix =
-          if channels != "",
-            do: " <span style=\"color:#999;font-size:0.75rem;\">(#{channels})</span>",
-            else: ""
+  defp status_badge(assigns) do
+    channels =
+      [if(assigns.has_account, do: "Web"), if(assigns.telegram_id, do: "Telegram")]
+      |> Enum.filter(& &1)
+      |> Enum.join(" + ")
 
-        Phoenix.HTML.raw("<span style=\"color:#16a34a;\">Active</span>" <> suffix)
-    end
+    assigns = assign(assigns, :channels, channels)
+
+    ~H"""
+    <span style="color:#16a34a;">Active</span>
+    <span :if={@channels != ""} style="color:#999;font-size:0.75rem;">(<%= @channels %>)</span>
+    """
   end
 
   defp invite_expired?(%{has_account: true, confirmed_at: nil, account_created_at: created_at})
