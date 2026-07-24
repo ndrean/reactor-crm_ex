@@ -3,11 +3,13 @@ import Config
 # Read Docker secrets from /run/secrets/{name} if available, else fall back to env var.
 # This supports both Docker Swarm (secrets mounted as files) and dev/CI (env vars).
 read_secret = fn name, env_var, default ->
-  secret_path = "/run/secrets/#{name}"
-
-  case File.read(secret_path) do
-    {:ok, value} -> String.trim(value)
-    {:error, _} -> System.get_env(env_var, default)
+  if String.match?(name, ~r/^[a-zA-Z0-9_-]+$/) do
+    case File.read("/run/secrets/#{name}") do
+      {:ok, value} -> String.trim(value)
+      {:error, _} -> System.get_env(env_var, default)
+    end
+  else
+    System.get_env(env_var, default)
   end
 end
 
