@@ -4,9 +4,27 @@ import Config
 # This supports both Docker Swarm (secrets mounted as files) and dev/CI (env vars).
 read_secret = fn name, env_var, default ->
   if String.match?(name, ~r/^[a-zA-Z0-9_-]+$/) do
-    case File.read("/run/secrets/#{name}") do
-      {:ok, value} -> String.trim(value)
-      {:error, _} -> System.get_env(env_var, default)
+    result = File.read("/run/secrets/#{name}")
+    IO.puts("[read_secret] #{name}: File.read => #{inspect(result)}")
+
+    case result do
+      {:ok, value} ->
+        trimmed = String.trim(value)
+
+        IO.puts(
+          "[read_secret] #{name}: trimmed=#{inspect(trimmed)} (#{byte_size(trimmed)} bytes)"
+        )
+
+        trimmed
+
+      {:error, reason} ->
+        env_val = System.get_env(env_var, default)
+
+        IO.puts(
+          "[read_secret] #{name}: file error #{reason}, env fallback=#{inspect(env_val != nil)}"
+        )
+
+        env_val
     end
   else
     System.get_env(env_var, default)
@@ -162,6 +180,14 @@ if config_env() == :prod do
 
   # Validate server-only secrets — skip for bin/migrate, bin/eval, etc.
   if System.get_env("PHX_SERVER") == "true" do
+    IO.puts(
+      "[validate] email_webhook_secret=#{inspect(Application.get_env(:crm_reactor, :email_webhook_secret))}"
+    )
+
+    IO.puts(
+      "[validate] admin_token=#{inspect(Application.get_env(:crm_reactor, :admin_token) != nil)}"
+    )
+
     unless Application.get_env(:crm_reactor, :email_webhook_secret) do
       raise "EMAIL_WEBHOOK_SECRET secret or env var is required when serving"
     end
