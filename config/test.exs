@@ -44,3 +44,5 @@ config :crm_reactor, CrmReactor.PromEx, disabled: true
 config :crm_reactor, enable_cache_listener: false
 
 config :crm_reactor, file_storage: CrmReactor.MockStorage
+
+config :crm_reactor, rate_limiter_enabled: false

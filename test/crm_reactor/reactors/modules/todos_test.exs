@@ -204,7 +204,7 @@ defmodule CrmReactor.Reactors.Modules.TodosTest do
         |> String.split("\n")
         |> Enum.find(&String.contains?(&1, "Préparer devis"))
 
-      assert devis_line
+      assert is_binary(devis_line), "expected 'Préparer devis' line in output"
       refute String.contains?(devis_line, "[")
     end
 

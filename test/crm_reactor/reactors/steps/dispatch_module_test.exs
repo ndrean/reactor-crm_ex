@@ -1,8 +1,9 @@
 defmodule CrmReactor.Reactors.Steps.DispatchModuleTest do
   use CrmReactor.DataCase
 
+  alias CrmReactor.CRM.{Contact, ExecutionLog}
   alias CrmReactor.Reactors.Steps.DispatchModule
-  alias CrmReactor.TestFixtures
+  alias CrmReactor.{Repo, TestFixtures}
 
   setup do
     fixture = TestFixtures.provision_test_tenant()
@@ -135,9 +136,6 @@ defmodule CrmReactor.Reactors.Steps.DispatchModuleTest do
     tenant: tenant,
     user_id: user_id
   } do
-    alias CrmReactor.CRM.{Contact, ExecutionLog}
-    alias CrmReactor.Repo
-
     schema = tenant.schema_name
 
     # Add 2 more contacts to go beyond threshold (already have 2, need >3)

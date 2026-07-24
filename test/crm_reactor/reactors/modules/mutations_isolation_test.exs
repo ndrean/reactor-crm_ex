@@ -5,7 +5,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsIsolationTest do
   alias CrmReactor.CRM.ExecutionLog
   alias CrmReactor.Reactors.Modules.Mutations
   alias CrmReactor.{Repo, TestFixtures}
-  alias CrmReactor.Tenants.Provisioner
+  alias CrmReactor.Tenants.{Provisioner, UserMapping}
 
   setup do
     # Provision two separate tenants with different users
@@ -78,8 +78,6 @@ defmodule CrmReactor.Reactors.Modules.MutationsIsolationTest do
 
   test "different user in same tenant gets :unauthorized", ctx do
     # Create a second user mapping in tenant A
-    alias CrmReactor.Tenants.UserMapping
-
     other_user_id = "9999999999"
 
     %UserMapping{}

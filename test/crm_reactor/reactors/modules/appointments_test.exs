@@ -3,7 +3,7 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
   use CrmReactor.DataCase
 
   alias CrmReactor.CRM.{Contact, ExecutionLog, Todo}
-  alias CrmReactor.Reactors.Modules.Todos
+  alias CrmReactor.Reactors.Modules.{Mutations, Todos}
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.Provisioner
 
@@ -567,7 +567,6 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
       assert result.action == "pending"
 
-      alias CrmReactor.Reactors.Modules.Mutations
       {:ok, confirmed} = Mutations.confirm(result.pending_id, "confirm", user_id)
       assert confirmed.output =~ "annulé"
 
@@ -598,7 +597,6 @@ defmodule CrmReactor.Reactors.Modules.AppointmentsTest do
 
       assert result.action == "pending"
 
-      alias CrmReactor.Reactors.Modules.Mutations
       {:ok, confirmed} = Mutations.confirm(result.pending_id, "confirm", user_id)
       assert confirmed.output =~ "reprogrammé"
 

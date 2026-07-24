@@ -90,7 +90,7 @@ defmodule CrmReactor.ErrorRecoveryTest do
 
       assert updated.status == "error"
       assert updated.error_message =~ "LLM unavailable"
-      assert updated.completed_at != nil
+      assert %DateTime{} = updated.completed_at
     end
 
     test "retry reuses same log row via job_id (no duplicates)", %{
@@ -183,7 +183,7 @@ defmodule CrmReactor.ErrorRecoveryTest do
 
       assert recovered.status == "completed"
       assert recovered.error_message == nil
-      assert recovered.completed_at != nil
+      assert %DateTime{} = recovered.completed_at
     end
   end
 end

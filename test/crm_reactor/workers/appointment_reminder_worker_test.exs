@@ -4,6 +4,7 @@ defmodule CrmReactor.Workers.AppointmentReminderWorkerTest do
 
   alias CrmReactor.CRM.Todo
   alias CrmReactor.{Repo, TestFixtures}
+  alias CrmReactor.Tenants.Provisioner
   alias CrmReactor.Workers.AppointmentReminderWorker
 
   setup do
@@ -69,7 +70,6 @@ defmodule CrmReactor.Workers.AppointmentReminderWorkerTest do
     user_id: user_id
   } do
     # Set up webhook on tenant
-    alias CrmReactor.Tenants.Provisioner
     {:ok, _tenant} = Provisioner.set_webhook(tenant.tenant_id, "https://example.com/hook")
 
     todo =

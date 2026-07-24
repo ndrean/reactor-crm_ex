@@ -2,6 +2,8 @@ defmodule CrmReactor.Workers.RetentionWorker do
   @moduledoc "Oban cron worker: anonymizes execution_logs older than the retention period."
   use Oban.Worker, queue: :maintenance, max_attempts: 1
 
+  require Logger
+
   alias CrmReactor.Repo
   alias CrmReactor.Tenants.Tenant
 
@@ -33,7 +35,6 @@ defmodule CrmReactor.Workers.RetentionWorker do
         )
 
       if count > 0 do
-        require Logger
         Logger.info("Retention: anonymized #{count} logs in #{schema}")
       end
     end

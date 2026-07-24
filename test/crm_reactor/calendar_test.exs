@@ -1,6 +1,8 @@
 defmodule CrmReactor.CalendarTest do
   use CrmReactor.DataCase
 
+  import Ecto.Query
+
   alias CrmReactor.Accounts
   alias CrmReactor.Accounts.{Account, AccountToken}
   alias CrmReactor.Calendar
@@ -29,7 +31,7 @@ defmodule CrmReactor.CalendarTest do
       account = create_account()
       {encoded, struct} = AccountToken.build_calendar_token(account)
 
-      assert is_binary(encoded)
+      assert byte_size(encoded) > 0
       assert {:ok, _} = Base.url_decode64(encoded, padding: false)
       assert struct.context == "calendar"
       assert struct.account_id == account.id
@@ -169,7 +171,6 @@ defmodule CrmReactor.CalendarTest do
     end
 
     test "excludes done and archived todos", ctx do
-      import Ecto.Query
       schema = ctx.tenant.schema_name
 
       # Mark all todos as done

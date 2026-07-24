@@ -1,6 +1,8 @@
 defmodule CrmReactorWeb.CalendarFeedControllerTest do
   use CrmReactorWeb.ConnCase
 
+  import Ecto.Query
+
   alias CrmReactor.Accounts
   alias CrmReactor.Tenants.TenantCache
 
@@ -34,8 +36,6 @@ defmodule CrmReactorWeb.CalendarFeedControllerTest do
       {:ok, token} = Accounts.generate_calendar_token(ctx.account)
 
       # Expire the token
-      import Ecto.Query
-
       from(t in CrmReactor.Accounts.AccountToken,
         where: t.account_id == ^ctx.account.id and t.context == "calendar"
       )

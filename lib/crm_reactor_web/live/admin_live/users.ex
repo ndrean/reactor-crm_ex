@@ -168,6 +168,8 @@ defmodule CrmReactorWeb.AdminLive.Users do
   # ── Events ──────────────────────────────────────────────────────────────
 
   @impl true
+  def handle_event("noop", _params, socket), do: {:noreply, socket}
+
   def handle_event("filter", %{"tenant" => tenant}, socket) do
     tenant = if tenant == "", do: nil, else: tenant
     users = Accounts.list_all_users(tenant)

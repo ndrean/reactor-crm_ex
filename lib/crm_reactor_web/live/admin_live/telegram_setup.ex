@@ -59,6 +59,8 @@ defmodule CrmReactorWeb.AdminLive.TelegramSetup do
   end
 
   @impl true
+  def handle_event("noop", _params, socket), do: {:noreply, socket}
+
   def handle_event(
         "setup",
         %{

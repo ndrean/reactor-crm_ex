@@ -86,7 +86,7 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
       })
 
     assert result.action == "pending"
-    assert result.pending_id != nil
+    assert byte_size(result.pending_id) > 0
   end
 
   test "data export without admin_email asks for email via pending loop", %{
@@ -105,7 +105,7 @@ defmodule CrmReactor.Reactors.MasterIngestTest do
       })
 
     assert result.action == "pending"
-    assert result.pending_id != nil
+    assert byte_size(result.pending_id) > 0
     assert result.output =~ "email"
   end
 

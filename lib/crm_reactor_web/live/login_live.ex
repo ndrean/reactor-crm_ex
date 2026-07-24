@@ -12,6 +12,10 @@ defmodule CrmReactorWeb.LoginLive do
     {:noreply, assign(socket, form: to_form(params, as: :account))}
   end
 
+  def handle_event("validate", %{"magic_link" => params}, socket) do
+    {:noreply, assign(socket, magic_link_form: to_form(params, as: :magic_link))}
+  end
+
   def handle_event("send_magic_link", %{"magic_link" => %{"email" => email}}, socket) do
     base_url = CrmReactorWeb.Endpoint.url()
     CrmReactor.Accounts.deliver_magic_link_email(email, base_url)
@@ -116,6 +120,7 @@ defmodule CrmReactorWeb.LoginLive do
         <form
           id="magic-link-form"
           phx-submit="send_magic_link"
+          phx-change="validate"
           style="display: flex; flex-direction: column; gap: 12px;"
         >
           <div>

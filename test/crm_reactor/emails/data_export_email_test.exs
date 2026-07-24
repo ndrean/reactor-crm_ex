@@ -82,7 +82,7 @@ defmodule CrmReactor.Emails.DataExportEmailTest do
       })
 
     assert result.action == "pending"
-    assert result.pending_id != nil
+    assert byte_size(result.pending_id) > 0
     assert result.output =~ "email"
     assert_no_email_sent()
   end
@@ -112,7 +112,7 @@ defmodule CrmReactor.Emails.DataExportEmailTest do
       })
 
     assert pending.action == "pending"
-    assert pending.pending_id != nil
+    assert byte_size(pending.pending_id) > 0
     assert_no_email_sent()
 
     # Step 2: user provides email via confirm

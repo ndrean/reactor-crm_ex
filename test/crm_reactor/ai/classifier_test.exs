@@ -28,7 +28,7 @@ defmodule CrmReactor.AI.ClassifierTest do
     [step] = result.steps
     assert step.workflow == "todos"
     assert step.action == "create"
-    assert step.params["subject"] || step.params["title"]
+    assert Enum.any?(["subject", "title"], &is_binary(step.params[&1]))
   end
 
   test "classifies contact count", %{registry: registry} do
@@ -56,7 +56,7 @@ defmodule CrmReactor.AI.ClassifierTest do
     {:ok, {workflow, confidence, usage}} =
       Classifier.classify_workflow("ajoute un contact Marie", registry, [])
 
-    assert is_binary(workflow)
+    assert byte_size(workflow) > 0
     assert is_float(confidence)
     assert confidence >= 0.0 and confidence <= 1.0
     assert workflow == "contacts"

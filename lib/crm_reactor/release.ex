@@ -2,6 +2,8 @@ defmodule CrmReactor.Release do
   @moduledoc "Release tasks for running migrations outside Mix."
   @app :crm_reactor
 
+  import Ecto.Query
+
   alias CrmReactor.Accounts.{Account, AccountToken}
   alias CrmReactor.Repo
 
@@ -53,8 +55,6 @@ defmodule CrmReactor.Release do
   end
 
   defp do_list_admins do
-    import Ecto.Query
-
     admins =
       from(a in Account, where: a.role == "admin", order_by: [asc: a.inserted_at])
       |> Repo.all()
@@ -69,8 +69,6 @@ defmodule CrmReactor.Release do
   end
 
   defp do_delete_admin(email) do
-    import Ecto.Query
-
     admin_count = Repo.aggregate(from(a in Account, where: a.role == "admin"), :count)
 
     case Repo.get_by(Account, email: email, role: "admin") do
@@ -88,8 +86,6 @@ defmodule CrmReactor.Release do
   end
 
   defp do_reset_password(email, new_password) do
-    import Ecto.Query
-
     case Repo.get_by(Account, email: email) do
       nil ->
         IO.puts("No account found with email: #{email}")

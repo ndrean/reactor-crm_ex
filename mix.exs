@@ -49,6 +49,7 @@ defmodule CrmReactor.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:jump_credo_checks, "~> 0.4"},
       {:phoenix, "~> 1.8.1"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
@@ -75,18 +76,21 @@ defmodule CrmReactor.MixProject do
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_html, "~> 4.1"},
       {:swoosh, "~> 1.16"},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:ecto_erd, "~> 0.7", only: :dev},
-      {:mox, "~> 1.0", only: :test},
-      {:excoveralls, "~> 0.18", only: :test},
-      {:lazy_html, ">= 0.1.0", only: :test},
       {:ical, "~> 3.1"},
       {:tz, "~> 0.28"},
       {:ex_aws, "~> 2.5"},
       {:ex_aws_s3, "~> 2.5"},
       {:hackney, "~> 1.20"},
       {:sweet_xml, "~> 0.7"},
+      {:dialyxir, "~> 1.4", runtime: false},
+      {:credo, "~> 1.7", runtime: false},
+      {:ex_slop, "~> 0.1", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false, warn_if_outdated: true},
+      {:excellent_migrations, "~> 0.1", only: [:dev, :test], runtime: false},
+      {:ecto_erd, "~> 0.7", only: :dev},
+      {:mox, "~> 1.0", only: :test},
+      {:excoveralls, "~> 0.18", only: :test},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:esbuild, "~> 0.8", runtime: Mix.env() == :dev}
     ]
   end

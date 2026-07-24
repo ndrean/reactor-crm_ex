@@ -232,7 +232,6 @@ defmodule CrmReactorWeb.AdminControllerTest do
         |> get("/api/admin/webhook_secret", %{tenant_id: fixture.tenant.tenant_id})
         |> json_response(200)
 
-      assert is_binary(resp["webhook_secret"])
       assert String.length(resp["webhook_secret"]) == 64
     end
 

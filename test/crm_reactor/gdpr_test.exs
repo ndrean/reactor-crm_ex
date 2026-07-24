@@ -125,7 +125,7 @@ defmodule CrmReactor.GDPRTest do
 
       [[raw_email]] = raw.rows
       refute raw_email == "marie@test.fr"
-      assert is_binary(raw_email)
+      assert byte_size(raw_email) > 0
     end
   end
 end

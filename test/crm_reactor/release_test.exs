@@ -1,6 +1,8 @@
 defmodule CrmReactor.ReleaseTest do
   use CrmReactor.DataCase
 
+  import Ecto.Query
+
   alias CrmReactor.Accounts.{Account, AccountToken}
   alias CrmReactor.Release
   alias CrmReactor.Repo
@@ -79,8 +81,6 @@ defmodule CrmReactor.ReleaseTest do
       updated = Repo.get_by(Account, email: admin.email)
       refute Account.valid_password?(updated, @valid_password)
       assert Account.valid_password?(updated, "newpass12345")
-
-      import Ecto.Query
 
       assert Repo.aggregate(
                from(t in AccountToken,

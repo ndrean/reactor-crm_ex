@@ -16,7 +16,6 @@ defmodule CrmReactorWeb.AdminLive.System do
       |> assign(
         page_title: "System",
         webhook_info: nil,
-        webhook_loading: false,
         admins: [],
         confirm_fix: false
       )

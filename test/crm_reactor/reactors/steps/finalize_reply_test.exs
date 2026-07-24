@@ -2,6 +2,8 @@ defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
   use CrmReactor.DataCase
   use Oban.Testing, repo: CrmReactor.Repo
 
+  import Ecto.Query
+
   alias CrmReactor.CRM.ExecutionLog
   alias CrmReactor.Reactors.Steps.FinalizeReply
   alias CrmReactor.Repo
@@ -123,8 +125,6 @@ defmodule CrmReactor.Reactors.Steps.FinalizeReplyTest do
                classification: classification("contacts", "create"),
                attachment: attachment
              })
-
-    import Ecto.Query
 
     record =
       Repo.one!(

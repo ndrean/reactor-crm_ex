@@ -29,8 +29,7 @@ defmodule CrmReactorWeb.BootstrapLive do
         {:ok,
          socket
          |> assign(allowed: true)
-         |> assign(form: to_form(%{"email" => "", "password" => ""}, as: :admin))
-         |> assign(trigger_submit: false), layout: false}
+         |> assign(form: to_form(%{"email" => "", "password" => ""}, as: :admin)), layout: false}
     end
   end
 

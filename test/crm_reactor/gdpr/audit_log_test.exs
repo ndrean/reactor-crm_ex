@@ -23,7 +23,7 @@ defmodule CrmReactor.GDPR.AuditLogTest do
 
       # performed_at is DB-default; verify it was persisted
       reloaded = Repo.get!(AuditLog, log.id)
-      assert reloaded.performed_at != nil
+      assert %DateTime{} = reloaded.performed_at
     end
 
     test "inserts with details" do

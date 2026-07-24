@@ -9,7 +9,7 @@ defmodule CrmReactorWeb.OnboardLive do
       nil ->
         {:ok,
          socket
-         |> assign(page_title: "Lien Telegram", account: nil, token: token)
+         |> assign(page_title: "Lien Telegram", account: nil)
          |> put_flash(:error, "Ce lien est invalide ou a expiré.")}
 
       account ->
@@ -19,7 +19,6 @@ defmodule CrmReactorWeb.OnboardLive do
          assign(socket,
            page_title: "Lier votre Telegram",
            account: account,
-           token: token,
            form: to_form(changeset),
            linked: false
          )}

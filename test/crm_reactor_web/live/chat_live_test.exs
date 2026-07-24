@@ -203,7 +203,7 @@ defmodule CrmReactorWeb.ChatLiveTest do
       |> element("form[phx-submit='provide_email']")
       |> render_submit(%{"email" => "admin@example.fr"})
 
-    assert html =~ "email" or html =~ "envoyé" or html =~ "admin@example.fr"
+    assert Enum.any?(["email", "envoyé", "admin@example.fr"], &(html =~ &1))
   end
 
   test "provide_email with invalid address shows error", %{conn: conn} do

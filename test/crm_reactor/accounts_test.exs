@@ -127,7 +127,7 @@ defmodule CrmReactor.AccountsTest do
 
       # Mapping should exist
       mapping = Repo.get_by(UserMapping, email: email)
-      assert mapping
+      assert %UserMapping{} = mapping
       assert mapping.tenant_id == "test_tenant"
     end
 
@@ -424,7 +424,7 @@ defmodule CrmReactor.AccountsTest do
 
       users = Accounts.list_all_users()
       user = Enum.find(users, &(&1.email == email))
-      assert user
+      assert %{email: ^email} = user
       assert user.has_account == true
       assert user.name == "All"
       assert user.status == "pending"

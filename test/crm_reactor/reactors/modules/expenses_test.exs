@@ -111,7 +111,7 @@ defmodule CrmReactor.Reactors.Modules.ExpensesTest do
 
       assert {:ok, result} = Expenses.execute(ctx)
       expense = Repo.get!(Expense, result.data["expense_id"], prefix: fixture.schema)
-      assert expense.contact_id != nil
+      assert is_integer(expense.contact_id)
     end
   end
 

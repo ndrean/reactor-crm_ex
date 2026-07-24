@@ -30,11 +30,12 @@ defmodule CrmReactorWeb.AdminComponents do
 
   attr :id, :string, required: true
   attr :phx_submit, :string, required: true
+  attr :phx_change, :string, default: "noop"
   slot :inner_block, required: true
 
   def admin_form(assigns) do
     ~H"""
-    <form id={@id} phx-submit={@phx_submit} style="background:#fff;padding:20px 24px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:24px;display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+    <form id={@id} phx-submit={@phx_submit} phx-change={@phx_change} style="background:#fff;padding:20px 24px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:24px;display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
       <%= render_slot(@inner_block) %>
     </form>
     """

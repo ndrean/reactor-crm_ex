@@ -58,7 +58,7 @@ defmodule CrmReactorWeb.AdminLive.UsersTest do
       })
 
       html = render(view)
-      assert html =~ "has already been taken" or html =~ "email"
+      assert Enum.any?(["has already been taken", "email"], &(html =~ &1))
     end
   end
 

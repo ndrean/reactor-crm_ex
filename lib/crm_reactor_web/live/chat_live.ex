@@ -100,6 +100,10 @@ defmodule CrmReactorWeb.ChatLive do
   end
 
   @impl true
+  def handle_event("validate_email", %{"email" => email}, socket) do
+    {:noreply, assign(socket, email_input: email)}
+  end
+
   def handle_event("provide_email", %{"email" => email}, socket) when email != "" do
     %{id: pending_id} = socket.assigns.pending
 
@@ -361,7 +365,7 @@ defmodule CrmReactorWeb.ChatLive do
         <div style="padding: 16px; border-top: 1px solid #e5e7eb;">
           <%= if @pending do %>
             <%= if @pending.type == "export_email" do %>
-              <form phx-submit="provide_email" style="display: flex; gap: 8px;">
+              <form id="email-form" phx-submit="provide_email" phx-change="validate_email" style="display: flex; gap: 8px;">
                 <input
                   type="email"
                   name="email"

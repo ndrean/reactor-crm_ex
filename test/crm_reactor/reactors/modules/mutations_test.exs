@@ -1,7 +1,7 @@
 defmodule CrmReactor.Reactors.Modules.MutationsTest do
   use CrmReactor.DataCase
 
-  alias CrmReactor.CRM.{Contact, ExecutionLog, Todo}
+  alias CrmReactor.CRM.{Contact, ExecutionLog, Expense, Todo}
   alias CrmReactor.Reactors.Modules.Mutations
   alias CrmReactor.Repo
   alias CrmReactor.TestFixtures
@@ -206,7 +206,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
 
     {:ok, result} = Mutations.confirm_system(pending.pending_id, "admin@example.fr", schema)
 
-    assert result.output =~ "email" or result.output =~ "envoyées"
+    assert Enum.any?(["email", "envoyées"], &(result.output =~ &1))
     assert result.action == "dump"
   end
 
@@ -304,8 +304,6 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
     schema: schema,
     user_id: user_id
   } do
-    alias CrmReactor.CRM.Expense
-
     {:ok, expense} =
       %Expense{}
       |> Expense.changeset(%{

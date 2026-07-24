@@ -2,7 +2,7 @@ defmodule CrmReactor.TenantsTest do
   use CrmReactor.DataCase
 
   alias CrmReactor.Tenants
-  alias CrmReactor.Tenants.Provisioner
+  alias CrmReactor.Tenants.{Provisioner, TenantCache}
   alias CrmReactor.TestFixtures
 
   setup do
@@ -28,8 +28,6 @@ defmodule CrmReactor.TenantsTest do
   end
 
   describe "resolve_canonical_id/1" do
-    alias CrmReactor.Tenants.TenantCache
-
     test "email resolves to itself", %{user_id: email} do
       assert TenantCache.resolve_canonical_id(email) == email
     end

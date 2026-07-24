@@ -1,10 +1,12 @@
 defmodule CrmReactorWeb.AdminController do
   use CrmReactorWeb, :controller
 
+  require Logger
+
   alias CrmReactor.AI.SubscriptionCache
   alias CrmReactor.GDPR.{AuditLog, DataSubject}
   alias CrmReactor.Repo
-  alias CrmReactor.Tenants.Provisioner
+  alias CrmReactor.Tenants.{Provisioner, Tenant}
 
   plug :verify_admin_token
 
@@ -52,7 +54,6 @@ defmodule CrmReactorWeb.AdminController do
         json(conn, %{success: true, tenant_id: tid, workflow_name: wf, enabled: enabled})
 
       {:error, reason} ->
-        require Logger
         Logger.error("Subscription update failed: #{inspect(reason)}")
         conn |> put_status(422) |> json(%{error: "Failed to update subscription"})
     end
@@ -79,8 +80,6 @@ defmodule CrmReactorWeb.AdminController do
   end
 
   def get_webhook_secret(conn, %{"tenant_id" => tid}) do
-    alias CrmReactor.Tenants.Tenant
-
     case Repo.get_by(Tenant, tenant_id: tid) do
       nil ->
         conn |> put_status(404) |> json(%{error: "Tenant not found"})
@@ -119,7 +118,6 @@ defmodule CrmReactorWeb.AdminController do
         conn |> put_status(404) |> json(%{error: "Data subject not found"})
 
       {:error, reason} ->
-        require Logger
         Logger.error("Email export failed: #{inspect(reason)}")
         conn |> put_status(500) |> json(%{error: "Internal server error"})
     end

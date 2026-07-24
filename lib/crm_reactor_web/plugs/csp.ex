@@ -1,4 +1,5 @@
 defmodule CrmReactorWeb.Plugs.CSP do
+  @moduledoc "Plug that sets Content-Security-Policy header with per-request nonces."
   import Plug.Conn
 
   def init(opts), do: opts

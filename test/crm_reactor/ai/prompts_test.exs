@@ -54,7 +54,7 @@ defmodule CrmReactor.AI.PromptsTest do
     test "nil params_schema emits no params bracket" do
       entries = [entry("help", "help")]
       prompt = Prompts.build_master_prompt(entries)
-      assert is_binary(prompt)
+      assert byte_size(prompt) > 0
       refute prompt =~ "[params —"
     end
 

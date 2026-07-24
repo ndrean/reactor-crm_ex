@@ -2,6 +2,8 @@ defmodule CrmReactor.Telegram.Handler do
   @moduledoc "Telegex webhook handler: text, voice, and callback query processing."
   use Telegex.Hook.GenHandler
 
+  require Logger
+
   alias CrmReactor.Accounts
   alias CrmReactor.Reactors.Modules.Mutations
   alias CrmReactor.Telegram
@@ -82,7 +84,6 @@ defmodule CrmReactor.Telegram.Handler do
         |> log_insert_error(chat_id)
 
       {:error, reason} ->
-        require Logger
         Logger.warning("Failed to get voice file: #{inspect(reason)}")
         Telegram.send_message(to_string(chat_id), "Impossible de traiter le message vocal.")
     end
@@ -114,7 +115,6 @@ defmodule CrmReactor.Telegram.Handler do
   defp log_insert_error({:ok, _}, _chat_id), do: :ok
 
   defp log_insert_error({:error, reason}, chat_id) do
-    require Logger
     Logger.error("Failed to enqueue ingest job for chat_id=#{chat_id}: #{inspect(reason)}")
   end
 end

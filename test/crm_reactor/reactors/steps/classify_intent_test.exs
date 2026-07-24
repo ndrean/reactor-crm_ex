@@ -37,7 +37,6 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntentTest do
         []
       )
 
-    assert is_list(result.steps)
     assert [step | _] = result.steps
     assert step.workflow == "contacts"
     assert step.action == "search"
@@ -100,7 +99,6 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntentTest do
         []
       )
 
-    assert is_list(result.steps)
     assert [step | _] = result.steps
     # MockClassifier delegates classify_with_file → classify, so same routing
     assert step.workflow == "contacts"
@@ -182,7 +180,6 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntentTest do
       )
 
     # Falls back to text-only; result should be the same as text-only
-    assert is_list(result.steps)
     assert [step | _] = result.steps
     assert step.workflow == "contacts"
   end

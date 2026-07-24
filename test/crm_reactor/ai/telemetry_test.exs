@@ -10,19 +10,19 @@ defmodule CrmReactor.AI.TelemetryTest do
 
   test "classify_stop does not raise" do
     t = Telemetry.classify_start()
-    Telemetry.classify_stop(t, %{model: "test-model"})
+    assert :ok = Telemetry.classify_stop(t, %{model: "test-model"})
   end
 
   test "classify_fallback does not raise" do
-    Telemetry.classify_fallback(%{model: "test-model", reason: "timeout"})
+    assert :ok = Telemetry.classify_fallback(%{model: "test-model", reason: "timeout"})
   end
 
   test "nl2sql_stop does not raise" do
     t = System.monotonic_time()
-    Telemetry.nl2sql_stop(t, %{module: "contacts"})
+    assert :ok = Telemetry.nl2sql_stop(t, %{module: "contacts"})
   end
 
   test "nl2sql_fallback_to_deterministic does not raise" do
-    Telemetry.nl2sql_fallback_to_deterministic(%{module: "todos"})
+    assert :ok = Telemetry.nl2sql_fallback_to_deterministic(%{module: "todos"})
   end
 end
