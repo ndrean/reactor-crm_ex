@@ -4,27 +4,9 @@ import Config
 # This supports both Docker Swarm (secrets mounted as files) and dev/CI (env vars).
 read_secret = fn name, env_var, default ->
   if String.match?(name, ~r/^[a-zA-Z0-9_-]+$/) do
-    result = File.read("/run/secrets/#{name}")
-    IO.puts("[read_secret] #{name}: File.read => #{inspect(result)}")
-
-    case result do
-      {:ok, value} ->
-        trimmed = String.trim(value)
-
-        IO.puts(
-          "[read_secret] #{name}: trimmed=#{inspect(trimmed)} (#{byte_size(trimmed)} bytes)"
-        )
-
-        trimmed
-
-      {:error, reason} ->
-        env_val = System.get_env(env_var, default)
-
-        IO.puts(
-          "[read_secret] #{name}: file error #{reason}, env fallback=#{inspect(env_val != nil)}"
-        )
-
-        env_val
+    case File.read("/run/secrets/#{name}") do
+      {:ok, value} -> String.trim(value)
+      {:error, _} -> System.get_env(env_var, default)
     end
   else
     System.get_env(env_var, default)
@@ -40,6 +22,12 @@ file_storage_backend =
     _ -> Application.get_env(:crm_reactor, :file_storage, CrmReactor.Storage.S3)
   end
 
+email_webhook_secret = read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil)
+
+admin_token =
+  read_secret.("admin_token", "ADMIN_TOKEN", nil) ||
+    if(config_env() != :prod, do: "dev-admin-token")
+
 config :crm_reactor,
   mistral_api_key: read_secret.("mistral_api_key", "MISTRAL_API_KEY", nil),
   mistral_model_small: System.get_env("MISTRAL_MODEL_SMALL", "mistral-small-latest"),
@@ -52,12 +40,8 @@ config :crm_reactor,
     if(System.get_env("WHISPER_PROVIDER") == "mistral", do: :mistral, else: :local),
   telegram_bot_token: telegram_bot_token,
   telegram_secret_token: read_secret.("telegram_secret_token", "TELEGRAM_SECRET_TOKEN", nil),
-  email_webhook_secret:
-    read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil) ||
-      Application.get_env(:crm_reactor, :email_webhook_secret),
-  admin_token:
-    read_secret.("admin_token", "ADMIN_TOKEN", nil) ||
-      if(config_env() != :prod, do: "dev-admin-token"),
+  email_webhook_secret: email_webhook_secret,
+  admin_token: admin_token,
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads"),
   file_storage: file_storage_backend,
   s3_bucket: System.get_env("MINIO_BUCKET", "crm-reactor"),
@@ -180,19 +164,11 @@ if config_env() == :prod do
 
   # Validate server-only secrets — skip for bin/migrate, bin/eval, etc.
   if System.get_env("PHX_SERVER") == "true" do
-    IO.puts(
-      "[validate] email_webhook_secret=#{inspect(Application.get_env(:crm_reactor, :email_webhook_secret))}"
-    )
-
-    IO.puts(
-      "[validate] admin_token=#{inspect(Application.get_env(:crm_reactor, :admin_token) != nil)}"
-    )
-
-    unless Application.get_env(:crm_reactor, :email_webhook_secret) do
+    unless email_webhook_secret do
       raise "EMAIL_WEBHOOK_SECRET secret or env var is required when serving"
     end
 
-    unless Application.get_env(:crm_reactor, :admin_token) do
+    unless admin_token do
       raise "ADMIN_TOKEN secret or env var is required when serving"
     end
   end
