@@ -1,5 +1,5 @@
 defmodule CrmReactor.StorageTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias CrmReactor.Storage
   alias CrmReactor.Storage.Local
@@ -11,8 +11,17 @@ defmodule CrmReactor.StorageTest do
   setup do
     tmp = System.tmp_dir!() |> Path.join("crm_storage_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp)
+    prev_path = Application.get_env(:crm_reactor, :storage_path)
+    prev_backend = Application.get_env(:crm_reactor, :file_storage)
     Application.put_env(:crm_reactor, :storage_path, tmp)
-    on_exit(fn -> File.rm_rf!(tmp) end)
+    Application.put_env(:crm_reactor, :file_storage, CrmReactor.Storage.Local)
+
+    on_exit(fn ->
+      File.rm_rf!(tmp)
+      Application.put_env(:crm_reactor, :storage_path, prev_path)
+      Application.put_env(:crm_reactor, :file_storage, prev_backend)
+    end)
+
     :ok
   end
 

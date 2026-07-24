@@ -13,6 +13,13 @@ end
 
 telegram_bot_token = read_secret.("telegram_bot_token", "TELEGRAM_BOT_TOKEN", nil)
 
+file_storage_backend =
+  case System.get_env("FILE_STORAGE_BACKEND") do
+    "local" -> CrmReactor.Storage.Local
+    "s3" -> CrmReactor.Storage.S3
+    _ -> Application.get_env(:crm_reactor, :file_storage, CrmReactor.Storage.S3)
+  end
+
 config :crm_reactor,
   mistral_api_key: read_secret.("mistral_api_key", "MISTRAL_API_KEY", nil),
   mistral_model_small: System.get_env("MISTRAL_MODEL_SMALL", "mistral-small-latest"),
@@ -30,7 +37,9 @@ config :crm_reactor,
       do:
         read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil) ||
           raise("EMAIL_WEBHOOK_SECRET secret or env var is required in prod"),
-      else: read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil)
+      else:
+        read_secret.("email_webhook_secret", "EMAIL_WEBHOOK_SECRET", nil) ||
+          Application.get_env(:crm_reactor, :email_webhook_secret)
     ),
   admin_token:
     if(config_env() == :prod,
@@ -40,14 +49,10 @@ config :crm_reactor,
       else: read_secret.("admin_token", "ADMIN_TOKEN", "dev-admin-token")
     ),
   storage_path: System.get_env("STORAGE_PATH", "priv/uploads"),
-  file_storage:
-    if(System.get_env("FILE_STORAGE_BACKEND") == "s3",
-      do: CrmReactor.Storage.S3,
-      else: CrmReactor.Storage.Local
-    ),
+  file_storage: file_storage_backend,
   s3_bucket: System.get_env("MINIO_BUCKET", "crm-reactor"),
   ex_aws_config:
-    if(System.get_env("FILE_STORAGE_BACKEND") == "s3",
+    if(System.get_env("FILE_STORAGE_BACKEND") != "local",
       do: [
         access_key_id:
           if(config_env() == :prod,

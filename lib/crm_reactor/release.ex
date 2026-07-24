@@ -95,7 +95,11 @@ defmodule CrmReactor.Release do
         IO.puts("No account found with email: #{email}")
 
       account ->
-        case Account.password_changeset(account, %{password: new_password}) |> Repo.update() do
+        case Account.password_changeset(account, %{
+               password: new_password,
+               password_confirmation: new_password
+             })
+             |> Repo.update() do
           {:ok, _} ->
             from(t in AccountToken,
               where: t.account_id == ^account.id and t.context == "session"

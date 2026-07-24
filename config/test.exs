@@ -7,7 +7,7 @@ import Config
 # Run `mix help test` for more information.
 config :crm_reactor, CrmReactor.Repo,
   username: "postgres_admin",
-  password: "change-me",
+  password: System.get_env("POSTGRES_PASSWORD", "change-me"),
   hostname: "localhost",
   database: "crm_reactor_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool: Ecto.Adapters.SQL.Sandbox,

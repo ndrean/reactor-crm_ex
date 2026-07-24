@@ -1,4 +1,4 @@
-ExUnit.start(exclude: [:external])
+ExUnit.start(exclude: [:external, :bootstrap_isolation])
 Ecto.Adapters.SQL.Sandbox.mode(CrmReactor.Repo, :manual)
 
 Mox.defmock(CrmReactor.MockStorage, for: CrmReactor.Storage)

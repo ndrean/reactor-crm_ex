@@ -8,6 +8,14 @@ defmodule CrmReactorWeb.Plugs.RateLimiter do
   def init(opts), do: opts
 
   def call(conn, opts) do
+    if Application.get_env(:crm_reactor, :rate_limiter_enabled, true) == false do
+      conn
+    else
+      do_rate_limit(conn, opts)
+    end
+  end
+
+  defp do_rate_limit(conn, opts) do
     max = Keyword.get(opts, :max, @default_max)
     window = Keyword.get(opts, :window_ms, @default_window_ms)
     prefix = Keyword.get(opts, :prefix, "crm")

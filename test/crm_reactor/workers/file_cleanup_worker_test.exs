@@ -11,7 +11,13 @@ defmodule CrmReactor.Workers.FileCleanupWorkerTest do
 
   setup do
     fixture = TestFixtures.provision_test_tenant()
-    on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
+    prev_backend = Application.get_env(:crm_reactor, :file_storage)
+    Application.put_env(:crm_reactor, :file_storage, CrmReactor.Storage.Local)
+
+    on_exit(fn ->
+      TestFixtures.cleanup_tenant(fixture)
+      Application.put_env(:crm_reactor, :file_storage, prev_backend)
+    end)
 
     schema = fixture.tenant.schema_name
 

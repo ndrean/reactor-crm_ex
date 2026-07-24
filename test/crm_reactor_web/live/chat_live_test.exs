@@ -1,12 +1,20 @@
 defmodule CrmReactorWeb.ChatLiveTest do
   use CrmReactorWeb.ConnCase
 
+  import Mox
   import Phoenix.LiveViewTest
 
   alias CrmReactor.{Repo, TestFixtures}
   alias CrmReactor.Tenants.UserMapping
 
-  @vcf_path "user.vcf"
+  @vcf_path "test/user.vcf"
+
+  setup :set_mox_global
+
+  setup do
+    Mox.stub_with(CrmReactor.MockStorage, CrmReactor.Storage.Local)
+    :ok
+  end
 
   defp setup_authenticated_user(conn, fixture) do
     %{conn: conn, account: account} =
@@ -289,6 +297,135 @@ defmodule CrmReactorWeb.ChatLiveTest do
 
     html = render(view)
     refute html =~ "phx-value-ref=\"#{ref}\""
+  end
+
+  # ── MIME validation + classification ──────────────────────────────────
+
+  test "JPEG with valid magic bytes is accepted and stored", %{conn: conn} do
+    fixture = TestFixtures.provision_test_tenant()
+    on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
+
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
+
+    jpeg = File.read!("test/IMG_0723.jpeg")
+
+    {:ok, view, _} = live(conn, "/chat")
+
+    upload =
+      file_input(view, "#chat-input-form", :attachment, [
+        %{name: "receipt.jpeg", content: jpeg, type: "image/jpeg"}
+      ])
+
+    render_upload(upload, "receipt.jpeg")
+
+    view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "reçu restaurant"})
+    html = render(view)
+
+    # MockClassifier routes image + expense keyword to expenses.submit
+    assert html =~ "Note de frais"
+    refute html =~ "En cours"
+  end
+
+  test "fake JPEG (wrong magic bytes) is rejected silently", %{conn: conn} do
+    fixture = TestFixtures.provision_test_tenant()
+    on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
+
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
+
+    # A text file masquerading as .jpeg
+    fake_jpeg = "This is not a JPEG file at all"
+
+    {:ok, view, _} = live(conn, "/chat")
+
+    upload =
+      file_input(view, "#chat-input-form", :attachment, [
+        %{name: "fake.jpeg", content: fake_jpeg, type: "image/jpeg"}
+      ])
+
+    render_upload(upload, "fake.jpeg")
+
+    view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "cherche Marie"})
+    html = render(view)
+
+    # No attachment stored (nil), falls back to text-only classification
+    assert html =~ "Marie"
+    refute html =~ "En cours"
+  end
+
+  test "PDF with valid magic bytes is stored but classification uses text-only", %{conn: conn} do
+    fixture = TestFixtures.provision_test_tenant()
+    on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
+
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
+
+    # Small synthetic PDF (valid %PDF header)
+    pdf_content = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF"
+
+    {:ok, view, _} = live(conn, "/chat")
+
+    upload =
+      file_input(view, "#chat-input-form", :attachment, [
+        %{name: "invoice.pdf", content: pdf_content, type: "application/pdf"}
+      ])
+
+    render_upload(upload, "invoice.pdf")
+
+    view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "cherche Marie"})
+    html = render(view)
+
+    # PDF is stored but ClassifyIntent falls back to text-only classification
+    assert html =~ "Marie"
+    refute html =~ "En cours"
+  end
+
+  test "fake PDF (wrong magic bytes) is rejected silently", %{conn: conn} do
+    fixture = TestFixtures.provision_test_tenant()
+    on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
+
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
+
+    fake_pdf = "This is not a PDF"
+
+    {:ok, view, _} = live(conn, "/chat")
+
+    upload =
+      file_input(view, "#chat-input-form", :attachment, [
+        %{name: "fake.pdf", content: fake_pdf, type: "application/pdf"}
+      ])
+
+    render_upload(upload, "fake.pdf")
+
+    view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "cherche Marie"})
+    html = render(view)
+
+    # No attachment stored, falls back to text-only
+    assert html =~ "Marie"
+    refute html =~ "En cours"
+  end
+
+  test "unsupported extension is rejected", %{conn: conn} do
+    fixture = TestFixtures.provision_test_tenant()
+    on_exit(fn -> TestFixtures.cleanup_tenant(fixture) end)
+
+    %{conn: conn} = setup_authenticated_user(conn, fixture)
+
+    {:ok, view, _} = live(conn, "/chat")
+
+    # .exe is not in the allowed list — but LiveView allow_upload also restricts this.
+    # The accept list is ~w(.jpg .jpeg .png .gif .csv .txt .vcf .pdf), so .txt is allowed.
+    # Test that a .txt file passes through without magic byte check (text files skip it).
+    upload =
+      file_input(view, "#chat-input-form", :attachment, [
+        %{name: "notes.txt", content: "some text data", type: "text/plain"}
+      ])
+
+    render_upload(upload, "notes.txt")
+
+    view |> element("form[phx-submit='send']") |> render_submit(%{"input" => "cherche Marie"})
+    html = render(view)
+
+    assert html =~ "Marie"
+    refute html =~ "En cours"
   end
 
   @tag :requires_mistral

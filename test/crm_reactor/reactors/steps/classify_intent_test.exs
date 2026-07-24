@@ -8,12 +8,15 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntentTest do
   setup do
     tmp = System.tmp_dir!() |> Path.join("crm_ci_#{System.unique_integer([:positive])}")
     File.mkdir_p!(tmp)
-    prev = Application.get_env(:crm_reactor, :storage_path)
+    prev_path = Application.get_env(:crm_reactor, :storage_path)
+    prev_backend = Application.get_env(:crm_reactor, :file_storage)
     Application.put_env(:crm_reactor, :storage_path, tmp)
+    Application.put_env(:crm_reactor, :file_storage, CrmReactor.Storage.Local)
 
     on_exit(fn ->
       File.rm_rf!(tmp)
-      Application.put_env(:crm_reactor, :storage_path, prev)
+      Application.put_env(:crm_reactor, :storage_path, prev_path)
+      Application.put_env(:crm_reactor, :file_storage, prev_backend)
     end)
 
     :ok
@@ -131,6 +134,31 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntentTest do
     assert step.params["amount"] == "23.50"
     assert step.params["category"] == "transport"
     # Verify _attachment_key was injected by ClassifyIntent
+    assert step.params["_attachment_key"] == key
+  end
+
+  test "attachment: PDF skips vision, falls back to text-only, injects _attachment_key" do
+    pdf_content = "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF"
+    {:ok, key} = Storage.put("ci_tenant", "invoice.pdf", pdf_content)
+    attachment = %{storage_key: key, content_type: "application/pdf", filename: "invoice.pdf"}
+
+    {:ok, result} =
+      ClassifyIntent.run(
+        %{
+          text: "note de frais restaurant",
+          attachment: attachment,
+          tenant: @tenant,
+          user_id: "test_ci_user"
+        },
+        %{},
+        []
+      )
+
+    assert [step | _] = result.steps
+    # Text "note de frais" routes to expenses.submit via MockClassifier text patterns
+    assert step.workflow == "expenses"
+    assert step.action == "submit"
+    # PDF classification is skipped — _attachment_key still injected
     assert step.params["_attachment_key"] == key
   end
 

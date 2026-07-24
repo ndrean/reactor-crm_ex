@@ -8,6 +8,7 @@ defmodule CrmReactorWeb.InboundEmailControllerTest do
 
   @secret "test-email-secret"
 
+  setup :set_mox_global
   setup :verify_on_exit!
 
   defp auth_conn(conn) do

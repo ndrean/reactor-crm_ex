@@ -34,6 +34,14 @@ defmodule CrmReactor.Reactors.Steps.ClassifyIntent do
     end
   end
 
+  # PDF attachment: store only, classify text via normal two-pass (don't send binary to LLM)
+  defp classify(text, %{content_type: "application/pdf"} = attachment, registry, user_id) do
+    case classify(text, nil, registry, user_id) do
+      {:ok, result} -> {:ok, inject_attachment_key(result, attachment.storage_key)}
+      error -> error
+    end
+  end
+
   # File attachment: skip two-pass, go directly to vision classifier
   defp classify(text, attachment, registry, _user_id) when not is_nil(attachment) do
     case Storage.get(attachment.storage_key) do

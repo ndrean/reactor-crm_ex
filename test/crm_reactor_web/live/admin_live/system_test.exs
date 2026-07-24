@@ -33,11 +33,10 @@ defmodule CrmReactorWeb.AdminLive.SystemTest do
       assert html =~ "Fix Webhook"
     end
 
-    test "shows token override input", %{conn: conn} do
+    test "shows admin accounts section", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/admin/system")
 
-      assert html =~ "Token Override"
-      assert html =~ "session only"
+      assert html =~ "Admin Accounts"
     end
   end
 end

@@ -29,7 +29,7 @@ defmodule CrmReactorWeb.ChatLive do
       |> assign(:show_calendar, false)
       |> stream(:messages, [], limit: 100)
       |> allow_upload(:attachment,
-        accept: ~w(.jpg .jpeg .png .gif .csv .txt .vcf),
+        accept: ~w(.jpg .jpeg .png .gif .csv .txt .vcf .pdf),
         max_entries: 1,
         max_file_size: Storage.max_size_bytes()
       )
@@ -198,25 +198,36 @@ defmodule CrmReactorWeb.ChatLive do
     end
   end
 
-  # Map extensions to ExImageInfo format atoms
-  @ext_to_format %{
+  # Image extensions validated via magic bytes
+  @image_formats %{
     ".jpg" => :jpeg,
     ".jpeg" => :jpeg,
     ".png" => :png,
     ".gif" => :gif
   }
 
+  # Non-image extensions allowed without magic byte check
+  @allowed_extensions ~w(.csv .txt .vcf .pdf)
+
   defp store_attachment(schema, entry, content) do
     ext = entry.client_name |> Path.extname() |> String.downcase()
 
-    if expected = @ext_to_format[ext] do
-      if ExImageInfo.seems?(content, expected) do
+    cond do
+      expected = @image_formats[ext] ->
+        if ExImageInfo.seems?(content, expected),
+          do: do_store(schema, entry, content),
+          else: {:ok, nil}
+
+      ext == ".pdf" ->
+        if String.starts_with?(content, "%PDF"),
+          do: do_store(schema, entry, content),
+          else: {:ok, nil}
+
+      ext in @allowed_extensions ->
         do_store(schema, entry, content)
-      else
+
+      true ->
         {:ok, nil}
-      end
-    else
-      do_store(schema, entry, content)
     end
   end
 

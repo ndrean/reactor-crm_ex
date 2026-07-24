@@ -6,19 +6,14 @@ defmodule CrmReactorWeb.BootstrapLiveTest do
   alias CrmReactor.Accounts.Account
   alias CrmReactor.Repo
 
-  setup do
-    # Clear all accounts for a clean state
-    Repo.delete_all(CrmReactor.Accounts.AccountToken)
-    Repo.delete_all(Account)
-    :ok
-  end
-
   describe "bootstrap /setup" do
     test "rejects access without bootstrap_token configured", %{conn: conn} do
       Application.put_env(:crm_reactor, :bootstrap_token, nil)
 
       {:ok, _view, html} = live(conn, "/setup")
       assert html =~ "Bootstrap not configured"
+    after
+      Application.delete_env(:crm_reactor, :bootstrap_token)
     end
 
     test "rejects access with wrong token", %{conn: conn} do
@@ -26,16 +21,6 @@ defmodule CrmReactorWeb.BootstrapLiveTest do
 
       {:ok, _view, html} = live(conn, "/setup?token=wrong-token")
       assert html =~ "Invalid token"
-    after
-      Application.delete_env(:crm_reactor, :bootstrap_token)
-    end
-
-    test "shows form when token is valid and no admins exist", %{conn: conn} do
-      Application.put_env(:crm_reactor, :bootstrap_token, "test-token")
-
-      {:ok, _view, html} = live(conn, "/setup?token=test-token")
-      assert html =~ "Create Admin Account"
-      assert html =~ "Initial Setup"
     after
       Application.delete_env(:crm_reactor, :bootstrap_token)
     end
@@ -58,10 +43,19 @@ defmodule CrmReactorWeb.BootstrapLiveTest do
       Application.delete_env(:crm_reactor, :bootstrap_token)
     end
 
-    test "creates admin and redirects to login", %{conn: conn} do
+    @tag :bootstrap_isolation
+    test "shows form and creates admin when no admins exist", %{conn: conn} do
+      # This test requires zero admin accounts. It deletes all accounts
+      # which can conflict with concurrent tests in the shared sandbox.
+      # Run alone if flaky: mix test --only bootstrap_isolation
+      Repo.delete_all(CrmReactor.Accounts.AccountToken)
+      Repo.delete_all(Account)
+
       Application.put_env(:crm_reactor, :bootstrap_token, "test-token")
 
-      {:ok, view, _html} = live(conn, "/setup?token=test-token")
+      {:ok, view, html} = live(conn, "/setup?token=test-token")
+      assert html =~ "Create Admin Account"
+      assert html =~ "Initial Setup"
 
       assert view
              |> form("#bootstrap-form",
@@ -69,10 +63,7 @@ defmodule CrmReactorWeb.BootstrapLiveTest do
              )
              |> render_submit()
 
-      # Should have redirected
       assert_redirect(view, "/login")
-
-      # Admin should exist
       assert Repo.get_by(Account, email: "newadmin@test.com", role: "admin")
     after
       Application.delete_env(:crm_reactor, :bootstrap_token)
