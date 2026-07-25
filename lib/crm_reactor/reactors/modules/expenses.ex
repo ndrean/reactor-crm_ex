@@ -15,6 +15,8 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
   # ── Expenses: list (NL2SQL) ────────────────────────────────────────
 
   def execute(%{action: "list", routing_path: "nl2sql"} = ctx) do
+    Logger.info("[Expenses] list nl2sql path, raw_text=#{inspect(ctx.raw_text)}")
+
     case QueryBuilder.build_query(Expense, ctx.raw_text) do
       {:ok, nl2sql_query} ->
         query =
@@ -23,7 +25,9 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
             order_by: [desc: e.date]
           )
 
+        Logger.info("[Expenses] list nl2sql final query: #{inspect(query)}")
         expenses = Repo.all(query, prefix: ctx.tenant_schema)
+        Logger.info("[Expenses] list nl2sql found #{length(expenses)} expenses")
 
         {:ok,
          %{
@@ -42,23 +46,28 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
   # ── Expenses: list (deterministic) ─────────────────────────────────
 
   def execute(%{action: "list"} = ctx) do
+    Logger.info("[Expenses] list deterministic path, params=#{inspect(ctx.params)}")
     execute_deterministic_list(ctx)
   end
 
   # ── Expenses: total ────────────────────────────────────────────────
 
   def execute(%{action: "total"} = ctx) do
+    Logger.info("[Expenses] total action, raw_text=#{inspect(ctx.raw_text)}")
+
     base_query =
       case QueryBuilder.build_query(Expense, ctx.raw_text) do
         {:ok, nl2sql_query} ->
-          from(e in nl2sql_query,
-            where: e.created_by == ^ctx.user_id and is_nil(e.archived_at)
-          )
+          scoped =
+            from(e in nl2sql_query,
+              where: e.created_by == ^ctx.user_id and is_nil(e.archived_at)
+            )
+
+          Logger.info("[Expenses] total nl2sql base query: #{inspect(scoped)}")
+          scoped
 
         {:error, reason} ->
-          Logger.warning(
-            "NL2SQL failed for expenses total: #{inspect(reason)}, using all expenses"
-          )
+          Logger.warning("[Expenses] total NL2SQL failed: #{inspect(reason)}, using all expenses")
 
           Telemetry.nl2sql_fallback_to_deterministic(%{module: "expenses"})
 
@@ -67,12 +76,16 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
           )
       end
 
-    totals =
+    agg_query =
       from(e in base_query,
         group_by: e.currency,
         select: {e.currency, sum(e.amount)}
       )
-      |> Repo.all(prefix: ctx.tenant_schema)
+
+    Logger.info("[Expenses] total aggregation query: #{inspect(agg_query)}")
+
+    totals = Repo.all(agg_query, prefix: ctx.tenant_schema)
+    Logger.info("[Expenses] total result: #{inspect(totals)}")
 
     case totals do
       [] ->

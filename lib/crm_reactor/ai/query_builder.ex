@@ -55,18 +55,26 @@ defmodule CrmReactor.AI.QueryBuilder do
         ]
       )
 
+    Logger.info("[QueryBuilder] table=#{table_name} user_text=#{inspect(user_text)}")
+    Logger.info("[QueryBuilder] columns=#{fields_desc}")
+    Logger.info("[QueryBuilder] allowed_fields=#{inspect(Map.keys(allowed_fields))}")
+
     start_time = System.monotonic_time()
 
     case call_llm(prompt, user_text) do
       {:ok, %{"filters" => filters} = spec} ->
+        Logger.info("[QueryBuilder] LLM response: #{inspect(spec)}")
+
         case validate_filters(filters, allowed_fields) do
           :ok ->
             query = compile_query(schema_module, filters, allowed_fields)
             query = apply_sort(query, spec, allowed_fields)
+            Logger.info("[QueryBuilder] compiled query: #{inspect(query)}")
             Telemetry.nl2sql_stop(start_time, %{filter_count: length(filters), rejected: 0})
             {:ok, query}
 
           {:error, _} = err ->
+            Logger.warning("[QueryBuilder] filters rejected: #{inspect(err)}")
             n = filter_count(filters)
 
             Telemetry.nl2sql_stop(start_time, %{
@@ -78,11 +86,12 @@ defmodule CrmReactor.AI.QueryBuilder do
         end
 
       {:ok, other} ->
-        Logger.warning("QueryBuilder received unexpected LLM payload: #{inspect(other)}")
+        Logger.warning("[QueryBuilder] unexpected LLM payload: #{inspect(other)}")
         Telemetry.nl2sql_stop(start_time, %{filter_count: 0, rejected: 0, error: true})
         {:error, :invalid_filters_format}
 
       {:error, _} = err ->
+        Logger.warning("[QueryBuilder] LLM call failed: #{inspect(err)}")
         Telemetry.nl2sql_stop(start_time, %{filter_count: 0, rejected: 0, error: true})
         err
     end

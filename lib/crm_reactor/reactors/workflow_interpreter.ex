@@ -174,6 +174,11 @@ defmodule CrmReactor.Reactors.WorkflowInterpreter do
          }}
 
       module ->
+        Logger.info(
+          "[Interpreter] dispatching #{step.workflow}.#{step.action} " <>
+            "routing_path=#{step.routing_path} params=#{inspect(step.params)}"
+        )
+
         module.execute(%{
           action: step.action,
           params: step.params,
