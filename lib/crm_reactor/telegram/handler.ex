@@ -70,7 +70,7 @@ defmodule CrmReactor.Telegram.Handler do
       when is_list(photos) and photos != [] do
     # Telegram sends multiple sizes; last is the largest
     largest = List.last(photos)
-    caption = Map.get(msg, :caption, "")
+    caption = msg[:caption] || ""
 
     case download_telegram_file(largest.file_id) do
       {:ok, content, file_path} ->
@@ -91,7 +91,7 @@ defmodule CrmReactor.Telegram.Handler do
   end
 
   def on_update(%{message: %{document: doc, chat: %{id: chat_id}} = msg}) when not is_nil(doc) do
-    caption = Map.get(msg, :caption, "")
+    caption = msg[:caption] || ""
 
     case download_telegram_file(doc.file_id) do
       {:ok, content, _file_path} ->

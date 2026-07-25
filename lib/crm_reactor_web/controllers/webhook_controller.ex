@@ -28,6 +28,32 @@ defmodule CrmReactorWeb.WebhookController do
     %{message: %{text: text, chat: %{id: chat_id}}}
   end
 
+  # Photo message
+  defp decode_update(%{
+         "message" => %{"photo" => [_ | _] = photos, "chat" => %{"id" => chat_id}} = msg
+       }) do
+    decoded_photos = Enum.map(photos, fn p -> %{file_id: p["file_id"]} end)
+    caption = msg["caption"]
+
+    %{message: %{photo: decoded_photos, caption: caption, chat: %{id: chat_id}}}
+  end
+
+  # Document message
+  defp decode_update(%{"message" => %{"document" => doc, "chat" => %{"id" => chat_id}} = msg})
+       when is_map(doc) do
+    %{
+      message: %{
+        document: %{
+          file_id: doc["file_id"],
+          file_name: doc["file_name"],
+          mime_type: doc["mime_type"]
+        },
+        caption: msg["caption"],
+        chat: %{id: chat_id}
+      }
+    }
+  end
+
   # Voice message
   defp decode_update(%{"message" => %{"voice" => voice, "chat" => %{"id" => chat_id}}})
        when is_map(voice) do
