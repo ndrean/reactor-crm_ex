@@ -90,6 +90,15 @@ defmodule CrmReactor.AI.Prompts do
     - "tâches passées", "en retard", "overdue" → due_before: #{Date.add(Date.utc_today(), -1)}
     - "à partir de demain", "dès demain"       → due_after:  #{Date.add(Date.utc_today(), 1)}
     - "pour demain", "exactement demain"       → due_on:     #{Date.add(Date.utc_today(), 1)}
+
+    expenses routing:
+    - "toutes mes dépenses", "mes notes de frais"               → expenses.list, routing_path: "deterministic"
+    - "dépenses de cette semaine", "notes de frais du mois"     → expenses.list, routing_path: "nl2sql"
+    - "dépenses restaurant de juin"                             → expenses.list, routing_path: "nl2sql"
+    - "total des dépenses", "combien j'ai dépensé"             → expenses.total, routing_path: "nl2sql"
+    - "total des notes de frais de cette semaine"               → expenses.total, routing_path: "nl2sql"
+    Rule: any date filter, period, or aggregation on expenses → routing_path: "nl2sql".
+    "total" action = aggregated sum. "list" action = itemized list.
     </date_handling>
     """
   end
