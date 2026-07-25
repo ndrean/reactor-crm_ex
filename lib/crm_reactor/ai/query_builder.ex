@@ -34,6 +34,11 @@ defmodule CrmReactor.AI.QueryBuilder do
   - "après-demain" = <%= @day_after %>
   - "cette semaine" = >= <%= @today %> AND <= <%= @end_of_week %>
 
+  Date boundary rules:
+  - "après le X" / "à partir du X" → op ">=" (inclusive)
+  - "avant le X" / "jusqu'au X"   → op "<=" (inclusive)
+  - "depuis le X"                  → op ">=" (inclusive)
+
   Respond ONLY with: {"filters": [...], "sort_by": "column_name" or null, "sort_dir": "asc" or "desc"}
   No explanation. No SQL. No data.
   """
