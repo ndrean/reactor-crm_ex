@@ -1,13 +1,105 @@
 defmodule CrmReactor.Reactors.Modules.Expenses do
   @moduledoc "Corporate expense claims CRUD with receipt photo extraction."
 
+  alias CrmReactor.AI.{QueryBuilder, Telemetry}
   alias CrmReactor.CRM.{Contact, ExecutionLog, Expense}
   alias CrmReactor.Reactors.PendingHelper
   alias CrmReactor.Repo
   import CrmReactor.QueryHelpers, only: [ilike_pattern: 1]
   import Ecto.Query
 
+  require Logger
+
   @categories ~w(restaurant transport hébergement fournitures autre)
+
+  # ── Expenses: list (NL2SQL) ────────────────────────────────────────
+
+  def execute(%{action: "list", routing_path: "nl2sql"} = ctx) do
+    case QueryBuilder.build_query(Expense, ctx.raw_text) do
+      {:ok, nl2sql_query} ->
+        query =
+          from(e in nl2sql_query,
+            where: e.created_by == ^ctx.user_id and is_nil(e.archived_at),
+            order_by: [desc: e.expense_date]
+          )
+
+        expenses = Repo.all(query, prefix: ctx.tenant_schema)
+
+        {:ok,
+         %{
+           output: format_result(expenses),
+           action: "list",
+           data: %{"expenses" => Enum.map(expenses, &expense_map/1), "count" => length(expenses)}
+         }}
+
+      {:error, reason} ->
+        Logger.warning("NL2SQL failed for expenses list: #{inspect(reason)}, falling back")
+        Telemetry.nl2sql_fallback_to_deterministic(%{module: "expenses"})
+        execute_deterministic_list(ctx)
+    end
+  end
+
+  # ── Expenses: list (deterministic) ─────────────────────────────────
+
+  def execute(%{action: "list"} = ctx) do
+    execute_deterministic_list(ctx)
+  end
+
+  # ── Expenses: total ────────────────────────────────────────────────
+
+  def execute(%{action: "total"} = ctx) do
+    base_query =
+      case QueryBuilder.build_query(Expense, ctx.raw_text) do
+        {:ok, nl2sql_query} ->
+          from(e in nl2sql_query,
+            where: e.created_by == ^ctx.user_id and is_nil(e.archived_at)
+          )
+
+        {:error, reason} ->
+          Logger.warning(
+            "NL2SQL failed for expenses total: #{inspect(reason)}, using all expenses"
+          )
+
+          Telemetry.nl2sql_fallback_to_deterministic(%{module: "expenses"})
+
+          from(e in Expense,
+            where: e.created_by == ^ctx.user_id and is_nil(e.archived_at)
+          )
+      end
+
+    totals =
+      from(e in base_query,
+        group_by: e.currency,
+        select: {e.currency, sum(e.amount)}
+      )
+      |> Repo.all(prefix: ctx.tenant_schema)
+
+    case totals do
+      [] ->
+        {:ok,
+         %{
+           output: "Aucune dépense trouvée.",
+           action: "total",
+           data: %{"totals" => %{}}
+         }}
+
+      totals ->
+        totals_map =
+          Map.new(totals, fn {currency, amount} -> {currency, Decimal.to_string(amount)} end)
+
+        formatted =
+          Enum.map_join(totals, ", ", fn {currency, amount} ->
+            "#{Decimal.to_string(amount)} #{currency}"
+          end)
+
+        {:ok,
+         %{
+           output: "Total des dépenses : #{formatted}",
+           action: "total",
+           data: %{"totals" => totals_map}
+         }}
+    end
+  end
 
   def execute(%{action: "submit"} = ctx) do
     contact_id = resolve_contact_id(ctx.params["contact_name"], ctx.tenant_schema)
@@ -43,24 +135,6 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
         msgs = Ecto.Changeset.traverse_errors(changeset, fn {m, _} -> m end) |> inspect()
         {:ok, %{output: "Impossible de créer la note de frais : #{msgs}", action: "submit"}}
     end
-  end
-
-  def execute(%{action: "list"} = ctx) do
-    base =
-      from(e in Expense,
-        where: e.created_by == ^ctx.user_id and is_nil(e.archived_at),
-        order_by: [desc: e.expense_date]
-      )
-
-    base = apply_filters(base, ctx.params)
-    expenses = Repo.all(base, prefix: ctx.tenant_schema)
-
-    {:ok,
-     %{
-       output: format_result(expenses),
-       action: "list",
-       data: %{"expenses" => Enum.map(expenses, &expense_map/1), "count" => length(expenses)}
-     }}
   end
 
   def execute(%{action: "delete"} = ctx) do
@@ -99,6 +173,24 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
   end
 
   # --- Private ---
+
+  defp execute_deterministic_list(ctx) do
+    base =
+      from(e in Expense,
+        where: e.created_by == ^ctx.user_id and is_nil(e.archived_at),
+        order_by: [desc: e.expense_date]
+      )
+
+    base = apply_filters(base, ctx.params)
+    expenses = Repo.all(base, prefix: ctx.tenant_schema)
+
+    {:ok,
+     %{
+       output: format_result(expenses),
+       action: "list",
+       data: %{"expenses" => Enum.map(expenses, &expense_map/1), "count" => length(expenses)}
+     }}
+  end
 
   defp find_expenses(ctx) do
     description = ctx.params["description"] || ""

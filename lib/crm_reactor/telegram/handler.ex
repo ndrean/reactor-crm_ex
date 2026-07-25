@@ -176,39 +176,42 @@ defmodule CrmReactor.Telegram.Handler do
     end
   end
 
+  @image_types ~w(image/jpeg image/png image/gif)
+
   defp store_and_enqueue(chat_id_str, caption, filename, content_type, content) do
-    case TenantCache.lookup(chat_id_str) do
-      {:ok, %{schema_name: schema}} ->
-        case CrmReactor.Storage.put(schema, filename, content) do
-          {:ok, storage_key} ->
-            attachment = %{
-              "storage_key" => storage_key,
-              "filename" => filename,
-              "content_type" => content_type,
-              "size_bytes" => byte_size(content)
-            }
+    with :ok <- validate_content(content_type, content),
+         {:ok, %{schema_name: schema}} <- TenantCache.lookup(chat_id_str),
+         {:ok, storage_key} <- CrmReactor.Storage.put(schema, filename, content) do
+      text = if caption == "", do: "fichier joint", else: caption
 
-            text = if caption == "", do: "fichier joint", else: caption
-
-            %{
-              "user_id" => chat_id_str,
-              "text" => text,
-              "channel" => "telegram",
-              "chat_id" => chat_id_str,
-              "is_audio" => false,
-              "attachment" => attachment
-            }
-            |> IngestWorker.new()
-            |> Oban.insert()
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-
-      error ->
-        error
+      %{
+        "user_id" => chat_id_str,
+        "text" => text,
+        "channel" => "telegram",
+        "chat_id" => chat_id_str,
+        "is_audio" => false,
+        "attachment" => %{
+          "storage_key" => storage_key,
+          "filename" => filename,
+          "content_type" => content_type,
+          "size_bytes" => byte_size(content)
+        }
+      }
+      |> IngestWorker.new()
+      |> Oban.insert()
     end
   end
+
+  defp validate_content(ct, content) when ct in @image_types do
+    expected = if ct == "image/png", do: :png, else: :jpeg
+    if ExImageInfo.seems?(content, expected), do: :ok, else: {:error, :invalid_image}
+  end
+
+  defp validate_content("application/pdf", content) do
+    if String.starts_with?(content, "%PDF"), do: :ok, else: {:error, :invalid_pdf}
+  end
+
+  defp validate_content(_content_type, _content), do: :ok
 
   defp log_insert_error({:ok, _}, _chat_id), do: :ok
 
