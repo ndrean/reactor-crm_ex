@@ -20,7 +20,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
         query =
           from(e in nl2sql_query,
             where: e.created_by == ^ctx.user_id and is_nil(e.archived_at),
-            order_by: [desc: e.expense_date]
+            order_by: [desc: e.date]
           )
 
         expenses = Repo.all(query, prefix: ctx.tenant_schema)
@@ -109,7 +109,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
          |> Expense.changeset(%{
            amount: parse_amount(ctx.params["amount"]),
            currency: ctx.params["currency"] || "EUR",
-           expense_date: parse_date(ctx.params["date"]) || Date.utc_today(),
+           date: parse_date(ctx.params["date"]) || Date.utc_today(),
            category: normalize_category(ctx.params["category"]),
            description: ctx.params["description"],
            created_by: ctx.user_id,
@@ -178,7 +178,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
     base =
       from(e in Expense,
         where: e.created_by == ^ctx.user_id and is_nil(e.archived_at),
-        order_by: [desc: e.expense_date]
+        order_by: [desc: e.date]
       )
 
     base = apply_filters(base, ctx.params)
@@ -212,7 +212,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
     query =
       case parse_date(ctx.params["date"]) do
         nil -> query
-        date -> from(e in query, where: e.expense_date == ^date)
+        date -> from(e in query, where: e.date == ^date)
       end
 
     Repo.all(query, prefix: ctx.tenant_schema)
@@ -236,7 +236,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
   defp filter_date(query, date_str) do
     case parse_date(date_str) do
       nil -> query
-      date -> from(e in query, where: e.expense_date == ^date)
+      date -> from(e in query, where: e.date == ^date)
     end
   end
 
@@ -255,7 +255,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
       Enum.map_join(expenses, "\n", fn e ->
         cat = if e.category, do: " [#{e.category}]", else: ""
         desc = if e.description, do: " — #{e.description}", else: ""
-        "• #{e.amount} #{e.currency} (#{e.expense_date})#{cat}#{desc}"
+        "• #{e.amount} #{e.currency} (#{e.date})#{cat}#{desc}"
       end)
 
     "Notes de frais (#{length(expenses)}, total #{totals_by_currency}) :\n#{lines}"
@@ -266,7 +266,7 @@ defmodule CrmReactor.Reactors.Modules.Expenses do
       "id" => e.id,
       "amount" => to_string(e.amount),
       "currency" => e.currency,
-      "expense_date" => to_string(e.expense_date),
+      "date" => to_string(e.date),
       "category" => e.category,
       "description" => e.description,
       "status" => e.status

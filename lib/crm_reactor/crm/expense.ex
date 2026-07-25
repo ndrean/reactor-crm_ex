@@ -5,7 +5,7 @@ defmodule CrmReactor.CRM.Expense do
   schema "expenses" do
     field :amount, :decimal
     field :currency, :string, default: "EUR"
-    field :expense_date, :date
+    field :date, :date, source: :expense_date
     field :category, :string
     field :description, :string
     field :created_by, :string
@@ -24,7 +24,7 @@ defmodule CrmReactor.CRM.Expense do
     |> cast(attrs, [
       :amount,
       :currency,
-      :expense_date,
+      :date,
       :category,
       :description,
       :created_by,
@@ -32,7 +32,7 @@ defmodule CrmReactor.CRM.Expense do
       :status,
       :attachment_key
     ])
-    |> validate_required([:amount, :expense_date, :created_by])
+    |> validate_required([:amount, :date, :created_by])
     |> validate_inclusion(:category, @categories)
     |> validate_number(:amount, greater_than: 0)
   end

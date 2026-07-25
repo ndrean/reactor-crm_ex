@@ -309,7 +309,7 @@ defmodule CrmReactor.Reactors.Modules.MutationsTest do
       |> Expense.changeset(%{
         description: "Taxi",
         amount: Decimal.new("25.50"),
-        expense_date: Date.utc_today(),
+        date: Date.utc_today(),
         created_by: user_id
       })
       |> Repo.insert(prefix: schema)

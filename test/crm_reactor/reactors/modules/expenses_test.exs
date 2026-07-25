@@ -60,7 +60,7 @@ defmodule CrmReactor.Reactors.Modules.ExpensesTest do
       assert result.action == "submit"
 
       expense = Repo.get!(Expense, result.data["expense_id"], prefix: fixture.schema)
-      assert expense.expense_date == Date.utc_today()
+      assert expense.date == Date.utc_today()
     end
 
     test "normalizes comma decimal separator", fixture do
