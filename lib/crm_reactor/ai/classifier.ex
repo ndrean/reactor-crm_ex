@@ -191,22 +191,13 @@ defmodule CrmReactor.AI.Classifier do
 
   defp parse_llm_response(body) do
     [choice | _] = body["choices"]
-    raw_content = choice["message"]["content"]
     usage = body["usage"]
 
-    Logger.info("[Classifier] raw LLM response: #{raw_content}")
-
-    case Jason.decode(raw_content) do
+    case Jason.decode(choice["message"]["content"]) do
       {:ok, parsed} ->
-        steps = parse_steps(parsed)
-
-        Logger.info(
-          "[Classifier] parsed steps: #{inspect(Enum.map(steps, fn s -> %{workflow: s.workflow, action: s.action, routing_path: s.routing_path, params: s.params} end))}"
-        )
-
         {:ok,
          %{
-           steps: steps,
+           steps: parse_steps(parsed),
            prompt_tokens: usage["prompt_tokens"],
            completion_tokens: usage["completion_tokens"],
            total_tokens: usage["total_tokens"]
