@@ -4,7 +4,7 @@ defmodule CrmReactor.Emails.InviteEmail do
 
   def build(to_email, name, invite_url, calendar_url \\ nil, onboard_url \\ nil) do
     {from_name, from_email} =
-      Application.get_env(:crm_reactor, :mailer_from, {"CRM Reactor", "noreply@crm-reactor.app"})
+      Application.get_env(:crm_reactor, :mailer_from, {"CRM Reactor", "admin@reactor.nlex.uk"})
 
     greeting = if name, do: "Bonjour #{name},", else: "Bonjour,"
 

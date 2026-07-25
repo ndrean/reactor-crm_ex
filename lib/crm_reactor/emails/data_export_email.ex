@@ -4,7 +4,7 @@ defmodule CrmReactor.Emails.DataExportEmail do
 
   def build(to_email, company_name, data_text) do
     {from_name, from_email} =
-      Application.get_env(:crm_reactor, :mailer_from, {"CRM Reactor", "noreply@crm-reactor.app"})
+      Application.get_env(:crm_reactor, :mailer_from, {"CRM Reactor", "admin@reactor.nlex.uk"})
 
     attachment =
       Swoosh.Attachment.new(

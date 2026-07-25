@@ -77,7 +77,7 @@ config :crm_reactor,
   bootstrap_token: read_secret.("bootstrap_token", "BOOTSTRAP_TOKEN", nil),
   mailer_from:
     {System.get_env("MAILER_FROM_NAME", "CRM Reactor"),
-     System.get_env("MAILER_FROM_EMAIL", "noreply@crm-reactor.app")}
+     System.get_env("MAILER_FROM_EMAIL", "admin@reactor.nlex.uk")}
 
 config :telegex, token: telegram_bot_token
 

@@ -4,7 +4,7 @@ defmodule CrmReactor.Emails.PasswordResetEmail do
 
   def build(to_email, name, reset_url) do
     {from_name, from_email} =
-      Application.get_env(:crm_reactor, :mailer_from, {"CRM Reactor", "noreply@crm-reactor.app"})
+      Application.get_env(:crm_reactor, :mailer_from, {"CRM Reactor", "admin@reactor.nlex.uk"})
 
     greeting = if name, do: "Bonjour #{name},", else: "Bonjour,"
 

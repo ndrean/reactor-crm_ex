@@ -36,7 +36,7 @@ defmodule CrmReactor.Workers.IngestWorker do
           is_audio: args["is_audio"] || false,
           channel: to_channel(args["channel"]),
           job_id: "oban-#{job_id}",
-          attachment: nil,
+          attachment: deserialize_attachment(args["attachment"]),
           tenant: tenant
         }
 
@@ -91,6 +91,17 @@ defmodule CrmReactor.Workers.IngestWorker do
       {:ok, %{schema_name: schema}} -> schema
       {:error, _} -> nil
     end
+  end
+
+  defp deserialize_attachment(nil), do: nil
+
+  defp deserialize_attachment(%{} = att) do
+    %{
+      storage_key: att["storage_key"],
+      filename: att["filename"],
+      content_type: att["content_type"],
+      size_bytes: att["size_bytes"]
+    }
   end
 
   defp to_channel("http"), do: :http

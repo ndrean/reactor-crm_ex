@@ -4,7 +4,7 @@ defmodule CrmReactor.Emails.MagicLinkEmail do
 
   def build(to_email, magic_link_url) do
     {from_name, from_email} =
-      Application.get_env(:crm_reactor, :mailer_from, {"CRM Reactor", "noreply@crm-reactor.app"})
+      Application.get_env(:crm_reactor, :mailer_from, {"CRM Reactor", "admin@reactor.nlex.uk"})
 
     new()
     |> to(to_email)
