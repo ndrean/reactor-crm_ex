@@ -34,3 +34,9 @@ minio.nlex.uk {
 s3.nlex.uk {
     reverse_proxy localhost:9000
 }
+
+hexgh.nlex.uk {
+    reverse_proxy localhost:4001 {
+            flush_interval -1
+        }
+}

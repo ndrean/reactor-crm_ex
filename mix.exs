@@ -49,7 +49,6 @@ defmodule CrmReactor.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:jump_credo_checks, "~> 0.4"},
       {:phoenix, "~> 1.8.1"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
@@ -84,9 +83,10 @@ defmodule CrmReactor.MixProject do
       {:sweet_xml, "~> 0.7"},
       {:dialyxir, "~> 1.4", runtime: false},
       {:credo, "~> 1.7", runtime: false},
+      {:jump_credo_checks, "~> 0.4"},
       {:ex_slop, "~> 0.1", only: [:dev, :test], runtime: false},
-      {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false, warn_if_outdated: true},
       {:excellent_migrations, "~> 0.1", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false, warn_if_outdated: true},
       {:ecto_erd, "~> 0.7", only: :dev},
       {:mox, "~> 1.0", only: :test},
       {:excoveralls, "~> 0.18", only: :test},
